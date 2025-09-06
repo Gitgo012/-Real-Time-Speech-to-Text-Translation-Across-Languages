@@ -64,7 +64,7 @@ Future versions of the system can explore **other ASR models** (like torchaudio-
 
 ---
 
-## ⚙️ Deployment Strategy
+## Deployment Strategy
 1. **Containerize each service** (ASR, Translation, TTS, API Gateway, UI).  
 2. **Push Docker images** to a container registry (Docker Hub, GitHub Container Registry, etc.).  
 3. Use **Kubernetes** to deploy services:  
@@ -78,7 +78,7 @@ Future versions of the system can explore **other ASR models** (like torchaudio-
 
 ---
 
-## 🛠️ Future Enhancements
+## Future Enhancements
 - Add **speaker diarization** (identify who is speaking).  
 - Implement **real-time subtitles overlay** for video calls.  
 - Enable **offline support** on edge devices.  
@@ -104,24 +104,23 @@ real-time-speech-translation/
 
 ---
 
-## 📜 License
+## License
 This project is open-source and available under the **MIT License**.
 
 ---
 
-## 👥 Contributors
-- [Arpit Deewan]
-- [Harsha Vardhan Babu]  
-- [Shikhar Sharma]
-- [Vartika Singh]
-- [Yash Kuletha]
+## Contributors
+- Arpit Deewan
+- Harsha Vardhan Babu
+- Shikhar Sharma
+- Vartika Singh
+- Yash Kuletha
 
 ---
 
-## 🙌 Acknowledgements
+## Acknowledgements
 - [Faster-Whisper](https://github.com/guillaumekln/faster-whisper)  
 - [Hugging Face Transformers](https://huggingface.co/models)  
 - [Coqui TTS](https://github.com/coqui-ai/TTS)  
 - Open-source community for enabling real-time AI research & deployment
 
-## 📂 Repository Structure (Proposed)
