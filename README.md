@@ -87,20 +87,22 @@ Future versions of the system can explore **other ASR models** (like torchaudio-
 
 ---
 
-## Repository structure (proposed)
+## Repository Structure (Proposed)
+```text
 real-time-speech-translation/
-│── asr_service/ # Faster-Whisper ASR microservice
-│── translation_service/ # Transformer-based translation microservice
-│── tts_service/ # (Optional) text-to-speech microservice
-│── api_gateway/ # API routing and orchestration
-│── ui/ # Web or mobile interface
-│── k8s/ # Kubernetes YAML manifests
-│ ├── deployment.yaml
-│ ├── service.yaml
-│ └── ingress.yaml
-│── docker/ # Dockerfiles for each service
-│── tests/ # Unit and integration tests
-│── README.md
+├── asr_service/          # Faster-Whisper ASR microservice
+├── translation_service/  # Transformer-based translation microservice
+├── tts_service/          # (Optional) text-to-speech microservice
+├── api_gateway/          # API routing and orchestration
+├── ui/                   # Web or mobile interface
+├── k8s/                  # Kubernetes YAML manifests
+│   ├── deployment.yaml
+│   ├── service.yaml
+│   └── ingress.yaml
+├── docker/               # Dockerfiles for each service
+├── tests/                # Unit and integration tests
+└── README.md
+```
 
 ---
 
