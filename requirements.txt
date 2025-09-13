@@ -1,0 +1,13 @@
+flask==2.3.3
+flask-socketio==5.3.6
+python-socketio==5.10.0
+numpy==1.24.3
+torch==2.1.0
+torchaudio==2.1.0
+transformers==4.35.2
+pydub==0.25.1
+ffmpeg-python==0.2.0
+accelerate==0.24.1
+safetensors==0.4.1
+soundfile==0.12.1
+sentencepiece==0.1.99  # Critical for tokenizers
