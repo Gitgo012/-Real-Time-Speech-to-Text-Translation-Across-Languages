@@ -82,9 +82,9 @@
       >
         <h1 style="margin: 0; color: #333">Real-time Speech Translation</h1>
         <div style="display: flex; align-items: center; gap: 15px">
-          <span style="color: #666; font-size: 14px"
-            >Welcome, <strong style="color: #333">{{ username }}</strong>!</span
-          >
+          <span style="color: #666; font-size: 14px">
+            Welcome, <strong style="color: #333">{{ username }}</strong>!
+          </span>
           <a
             href="{{ url_for('logout') }}"
             class="btn btn-danger"
@@ -110,9 +110,6 @@
       <div class="controls">
         <select id="languageSelect">
           <option value="">Select target language</option>
-          <option value="es">Spanish</option>
-          <option value="fr">French</option>
-          <option value="de">German</option>
         </select>
 
         <button id="startBtn" onclick="startRecording()">
@@ -126,7 +123,7 @@
       <div class="status" id="status">Ready to start</div>
 
       <div class="results">
-        <h3>Original Text (English):</h3>
+        <h3>Original Text:</h3>
         <div class="result-box" id="originalText">-</div>
 
         <h3>Translated Text:</h3>
@@ -141,7 +138,6 @@
       let socket;
       let stream;
 
-      // Connect to server
       document.addEventListener("DOMContentLoaded", function () {
         socket = io();
 
@@ -153,11 +149,17 @@
           updateStatus("Disconnected from server");
         });
 
-        socket.on("status", function (data) {
-          updateStatus(data.message);
-        });
-
         socket.on("available_languages", function (data) {
+          const select = document.getElementById("languageSelect");
+          select.innerHTML = '<option value="">Select target language</option>';
+
+          for (const [label, code] of Object.entries(data.languages)) {
+            const option = document.createElement("option");
+            option.value = code;
+            option.textContent = label;
+            select.appendChild(option);
+          }
+
           if (!data.asr_ready) {
             updateStatus("ASR model not ready. Please wait...");
             document.getElementById("startBtn").disabled = true;
@@ -202,23 +204,16 @@
             },
           });
 
-          // Create audio context for processing
           audioContext = new AudioContext({ sampleRate: 16000 });
           const source = audioContext.createMediaStreamSource(stream);
-
-          // Create a simple gain node to avoid feedback loop
           const gainNode = audioContext.createGain();
-          gainNode.gain.value = 0; // Mute output to prevent echo
-
+          gainNode.gain.value = 0;
           source.connect(gainNode);
 
-          // Use MediaRecorder with proper settings
           const options = {
             mimeType: "audio/webm;codecs=opus",
             audioBitsPerSecond: 16000,
           };
-
-          // Check if the browser supports the mimeType
           if (!MediaRecorder.isTypeSupported(options.mimeType)) {
             console.warn(
               "WebM with Opus not supported, falling back to default"
@@ -227,26 +222,21 @@
           }
 
           mediaRecorder = new MediaRecorder(stream, options);
-
-          // Store chunks and send them as complete recordings
           let chunks = [];
+
           mediaRecorder.ondataavailable = function (event) {
-            if (event.data.size > 0) {
-              chunks.push(event.data);
-            }
+            if (event.data.size > 0) chunks.push(event.data);
           };
 
           mediaRecorder.onstop = function () {
-            // Create a complete blob from all chunks
             const blob = new Blob(chunks, { type: "audio/webm" });
-            chunks = []; // Reset chunks
+            chunks = [];
 
             const reader = new FileReader();
             reader.onload = function () {
-              const base64Audio = reader.result;
               if (socket && socket.connected) {
                 socket.emit("audio_chunk", {
-                  audio: base64Audio,
+                  audio: reader.result,
                   target_lang: targetLang,
                 });
               }
@@ -254,10 +244,8 @@
             reader.readAsDataURL(blob);
           };
 
-          // Start recording
-          mediaRecorder.start(1000); // Collect data every second
+          mediaRecorder.start(1000);
           isRecording = true;
-
           document.getElementById("startBtn").disabled = true;
           document.getElementById("stopBtn").disabled = false;
           updateStatus("Recording...");
@@ -271,14 +259,8 @@
         if (mediaRecorder && isRecording) {
           mediaRecorder.stop();
           isRecording = false;
-
-          if (audioContext) {
-            audioContext.close();
-          }
-
-          if (stream) {
-            stream.getTracks().forEach((track) => track.stop());
-          }
+          if (audioContext) audioContext.close();
+          if (stream) stream.getTracks().forEach((track) => track.stop());
 
           document.getElementById("startBtn").disabled = false;
           document.getElementById("stopBtn").disabled = true;
@@ -288,3 +270,4 @@
     </script>
   </body>
 </html>
+

@@ -9,13 +9,37 @@ import logging
 import tempfile
 from pydub import AudioSegment
 import json
-from transformers import pipeline
+from transformers import pipeline, M2M100ForConditionalGeneration, M2M100Tokenizer
 import torchaudio
 import soundfile as sf
 from flask_pymongo import PyMongo
 from flask_bcrypt import Bcrypt
 from flask_session import Session
 from authlib.integrations.flask_client import OAuth
+
+# Picked 20 diverse languages
+AVAILABLE_LANGUAGES = {
+    "English": "en",
+    "Hindi": "hi",
+    "Spanish": "es",
+    "French": "fr",
+    "German": "de",
+    "Italian": "it",
+    "Portuguese": "pt",
+    "Russian": "ru",
+    "Chinese (Simplified)": "zh",
+    "Japanese": "ja",
+    "Korean": "ko",
+    "Arabic": "ar",
+    "Turkish": "tr",
+    "Bengali": "bn",
+    "Tamil": "ta",
+    "Swahili": "sw",
+    "Persian (Farsi)": "fa",
+    "Vietnamese": "vi",
+    "Indonesian": "id",
+    "Thai": "th",
+}
 
 # Load environment variables
 try:
@@ -39,22 +63,17 @@ Session(app)
 
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-
 # OAuth Configuration
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", None)
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", None)
 
 # Initialize OAuth
 oauth = OAuth(app)
-google = None  # Initialize google variable
+google = None
 
 if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
     logger.warning("Google OAuth client id/secret not set. Google login will not work until env vars are provided.")
-    logger.warning("Please create a .env file with your Google OAuth credentials.")
-    logger.warning("See GOOGLE_OAUTH_SETUP.md for detailed instructions.")
 else:
-    logger.info("Google OAuth credentials found. Setting up Google login...")
-    # Register Google OAuth client with manual endpoints (OAuth 2.0 only)
     google = oauth.register(
         name="google",
         client_id=GOOGLE_CLIENT_ID,
@@ -66,50 +85,41 @@ else:
     )
     logger.info("Google OAuth client registered successfully")
 
-# ----- Model & pipeline setup (unchanged logic) -----
-asr_pipeline = None
-translation_pipelines = {}
+# ----- Model setup -----
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
+asr_pipeline = None
+m2m_model = None
+m2m_tokenizer = None
+
 def load_models():
-    global asr_pipeline, translation_pipelines
+    global asr_pipeline, m2m_model, m2m_tokenizer
     try:
-        logger.info("Loading ASR model...")
-        model_id = "openai/whisper-medium"
+        logger.info("Loading ASR model (Whisper-medium)...")
         asr_pipeline = pipeline(
             "automatic-speech-recognition",
-            model=model_id,
-            torch_dtype=torch_dtype,
+            model="openai/whisper-medium",
             device=device,
-            chunk_length_s=30,
+            torch_dtype=torch_dtype,
+            chunk_length_s=30
         )
         logger.info("ASR model loaded successfully")
     except Exception as e:
         logger.error(f"Failed to load ASR model: {e}")
         asr_pipeline = None
-        return
 
-    model_configs = {
-        'es': "Helsinki-NLP/opus-mt-en-es",
-        'fr': "Helsinki-NLP/opus-mt-en-fr",
-        'de': "Helsinki-NLP/opus-mt-en-de",
-    }
-    for lang, model_name in model_configs.items():
-        try:
-            logger.info(f"Loading {lang} translation model...")
-            translation_pipelines[lang] = pipeline(
-                "translation",
-                model=model_name,
-                device=device if device != "cpu" else -1,
-                torch_dtype=torch_dtype
-            )
-            logger.info(f"Translation model for {lang} loaded successfully")
-        except Exception as e:
-            logger.error(f"Failed to load {lang} model: {e}")
-            # continue
+    try:
+        logger.info("Loading M2M100 multilingual translation model...")
+        m2m_model = M2M100ForConditionalGeneration.from_pretrained("facebook/m2m100_418M").to(device)
+        m2m_tokenizer = M2M100Tokenizer.from_pretrained("facebook/m2m100_418M")
+        logger.info("M2M100 model loaded successfully")
+    except Exception as e:
+        logger.error(f"Failed to load M2M100 model: {e}")
+        m2m_model = None
+        m2m_tokenizer = None
 
-# ----- Audio processing & ASR functions (unchanged) -----
+# ----- Audio processing -----
 def process_webm_audio(audio_data):
     try:
         with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as tmp:
@@ -131,41 +141,22 @@ def process_webm_audio(audio_data):
                 pass
             return samples, sample_rate
         except Exception as e:
-            logger.warning(f"Pydub method failed: {e}")
+            waveform, sample_rate = torchaudio.load(tmp_name)
+            waveform = waveform.mean(dim=0)
+            samples = waveform.numpy().astype(np.float32)
+            if sample_rate != 16000:
+                resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=16000)
+                samples = resampler(torch.from_numpy(samples)).numpy()
             try:
-                waveform, sample_rate = torchaudio.load(tmp_name)
-                waveform = waveform.mean(dim=0)
-                samples = waveform.numpy().astype(np.float32)
-                if sample_rate != 16000:
-                    resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=16000)
-                    samples = resampler(torch.from_numpy(samples)).numpy()
-                try:
-                    os.unlink(tmp_name)
-                except:
-                    pass
-                return samples, 16000
-            except Exception as e2:
-                logger.warning(f"Torchaudio method failed: {e2}")
-                try:
-                    with open(tmp_name, 'rb') as f:
-                        raw_data = f.read()
-                    samples = np.frombuffer(raw_data, dtype=np.int16).astype(np.float32) / 32768.0
-                    try:
-                        os.unlink(tmp_name)
-                    except:
-                        pass
-                    return samples, 16000
-                except Exception as e3:
-                    logger.error(f"All audio processing methods failed: {e3}")
-                    raise Exception(f"All audio processing methods failed: {e}, {e2}, {e3}")
+                os.unlink(tmp_name)
+            except:
+                pass
+            return samples, 16000
     except Exception as e:
         logger.error(f"Audio processing error: {e}")
-        try:
-            os.unlink(tmp_name)
-        except:
-            pass
         raise e
 
+# ----- ASR -----
 def transcribe_audio(audio_data, sample_rate=16000):
     if asr_pipeline is None:
         return "ASR model not available"
@@ -176,9 +167,10 @@ def transcribe_audio(audio_data, sample_rate=16000):
             tmp_name = tmp.name
             sf.write(tmp_name, audio_data, sample_rate, format='WAV')
         try:
-            result = asr_pipeline(tmp_name, generate_kwargs={"language": "english"})
+            result = asr_pipeline(tmp_name)
             transcribed_text = result.get("text", "").strip()
-            return transcribed_text if transcribed_text else "No speech detected"
+            detected_lang = result.get("language", "en")
+            return transcribed_text if transcribed_text else "No speech detected", detected_lang
         finally:
             try:
                 os.unlink(tmp_name)
@@ -186,30 +178,33 @@ def transcribe_audio(audio_data, sample_rate=16000):
                 pass
     except Exception as e:
         logger.error(f"Transcription error: {e}")
-        return f"Transcription error: {str(e)}"
+        return f"Transcription error: {str(e)}", "en"
 
-def translate_text(text, target_lang):
-    if not text or target_lang not in translation_pipelines:
+# ----- Translation -----
+def translate_text(text, source_lang, target_lang_code):
+    if not text or not m2m_model or not m2m_tokenizer:
         return ""
     try:
-        clean_text = text.strip()
-        if not clean_text or clean_text.lower() in ['no speech detected', 'asr model not available']:
-            return ""
-        result = translation_pipelines[target_lang](clean_text)
-        translated_text = result[0]['translation_text'] if result else ""
+        m2m_tokenizer.src_lang = source_lang
+        encoded = m2m_tokenizer(text, return_tensors="pt").to(device)
+        generated_tokens = m2m_model.generate(
+            **encoded,
+            forced_bos_token_id=m2m_tokenizer.get_lang_id(target_lang_code)
+        )
+        translated_text = m2m_tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)[0]
         return translated_text
     except Exception as e:
-        logger.error(f"Translation error for {target_lang}: {e}")
+        logger.error(f"Translation error ({source_lang}->{target_lang_code}): {e}")
         return f"Translation error: {str(e)}"
 
-
+# ----- Routes -----
 @app.route('/')
 def index():
     if "user" in session:
         return redirect(url_for('dashboard'))
     return render_template('index.html')
 
-@app.route('/register', methods=['GET', 'POST'])
+@app.route('/register', methods=['GET','POST'])
 def register():
     if request.method == 'POST':
         username = request.form.get("username").strip()
@@ -217,27 +212,22 @@ def register():
         if not username or not password:
             flash("Please fill all fields")
             return redirect(url_for('register'))
-        existing = mongo.db.users.find_one({"username": username})
-        if existing:
+        if mongo.db.users.find_one({"username": username}):
             flash("Username already exists")
             return redirect(url_for('register'))
         hashed = bcrypt.generate_password_hash(password).decode("utf-8")
-        mongo.db.users.insert_one({
-            "username": username,
-            "password": hashed,
-            "auth_type": "basic"
-        })
+        mongo.db.users.insert_one({"username": username, "password": hashed, "auth_type": "basic"})
         flash("Registered. Please login.")
         return redirect(url_for('login'))
     return render_template('register.html')
 
-@app.route('/login', methods=['GET', 'POST'])
+@app.route('/login', methods=['GET','POST'])
 def login():
     if request.method == 'POST':
         username = request.form.get("username").strip()
         password = request.form.get("password")
         user = mongo.db.users.find_one({"username": username})
-        if user and user.get("auth_type") == "basic" and bcrypt.check_password_hash(user.get("password",""), password):
+        if user and user.get("auth_type")=="basic" and bcrypt.check_password_hash(user.get("password",""), password):
             session["user"] = username
             flash("Login successful")
             return redirect(url_for('dashboard'))
@@ -251,13 +241,18 @@ def logout():
     flash("Logged out")
     return redirect(url_for('index'))
 
+@app.route('/dashboard')
+def dashboard():
+    if "user" not in session:
+        flash("Please login")
+        return redirect(url_for('login'))
+    return render_template("dashboard.html", username=session.get("user"))
+
 @app.route('/debug/oauth')
 def debug_oauth():
-    """Debug route to check OAuth configuration"""
     debug_info = {
         'google_client_id_set': bool(GOOGLE_CLIENT_ID),
         'google_client_secret_set': bool(GOOGLE_CLIENT_SECRET),
-        'google_client_id_value': GOOGLE_CLIENT_ID[:10] + "..." if GOOGLE_CLIENT_ID else "Not set",
         'google_oauth_configured': google is not None,
         'flask_secret_set': bool(app.config.get('SECRET_KEY')),
         'session_type': app.config.get('SESSION_TYPE'),
@@ -268,97 +263,56 @@ def debug_oauth():
 
 @app.route('/google_login')
 def google_login():
-    """Initiate Google OAuth login"""
     if not google or not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
-        flash("Google login is not configured. Please set up your Google OAuth credentials.", "error")
+        flash("Google login is not configured.", "error")
         return redirect(url_for('login'))
-    
-    # Normalize redirect URI to use localhost instead of 127.0.0.1
     redirect_uri = url_for('google_callback', _external=True)
     if '127.0.0.1' in redirect_uri:
         redirect_uri = redirect_uri.replace('127.0.0.1', 'localhost')
-    
-    logger.info(f"Redirect URI: {redirect_uri}")
     return google.authorize_redirect(redirect_uri)
 
 @app.route('/google_callback')
 def google_callback():
-    """Handle Google OAuth callback"""
     if not google:
         flash("Google login is not configured.", "error")
         return redirect(url_for('login'))
-        
     try:
         token = google.authorize_access_token()
-        logger.info(f"Received token: {token}")
-        
-        # Get user info from Google OAuth 2.0 API
         user_info = google.get('userinfo', token=token).json()
-        logger.info(f"User info: {user_info}")
-        
-        if not user_info:
-            flash("Failed to fetch user info from Google.", "error")
-            return redirect(url_for('login'))
-        
         email = user_info.get('email')
-        name = user_info.get('name', email.split('@')[0] if email else 'GoogleUser')
-        google_id = user_info.get('id')
-        
         if not email:
-            flash("No email address provided by Google.", "error")
+            flash("No email provided by Google.", "error")
             return redirect(url_for('login'))
-        
-        # Check if user exists
         user = mongo.db.users.find_one({"username": email})
         if not user:
-            # Create new user
             mongo.db.users.insert_one({
-                "username": email,
-                "name": name,
-                "email": email,
-                "google_id": google_id,
-                "auth_type": "google",
-                "profile": user_info
+                "username": email, "name": user_info.get("name"), "email": email,
+                "google_id": user_info.get("id"), "auth_type": "google", "profile": user_info
             })
-            logger.info(f"Created new Google user: {email}")
         else:
-            # Update existing user
-            mongo.db.users.update_one(
-                {"_id": user["_id"]}, 
-                {"$set": {"google_id": google_id, "profile": user_info}}
-            )
-            logger.info(f"Updated existing Google user: {email}")
-        
+            mongo.db.users.update_one({"_id": user["_id"]}, {"$set": {"google_id": user_info.get("id"), "profile": user_info}})
         session["user"] = email
         flash("Successfully logged in with Google!", "success")
         return redirect(url_for('dashboard'))
-        
     except Exception as e:
         logger.error(f"Google OAuth error: {e}")
-        flash("An error occurred during Google login. Please try again.", "error")
+        flash("Error during Google login.", "error")
         return redirect(url_for('login'))
 
-@app.route('/dashboard')
-def dashboard():
-    if "user" not in session:
-        flash("Please login")
-        return redirect(url_for('login'))
-    username = session.get("user")
-    return render_template("dashboard.html", username=username)
-
+# ----- SocketIO events -----
 @socketio.on('connect')
 def handle_connect():
     if "user" not in session:
-        logger.info("Unauthorized socket connect attempt; disconnecting")
         emit('error', {'message': 'Unauthorized - please login first'})
         disconnect()
         return
     logger.info(f'Client connected (user={session.get("user")})')
-    emit('status', {'message': 'Connected to server'})
     emit('available_languages', {
-        'languages': list(translation_pipelines.keys()),
-        'asr_ready': asr_pipeline is not None
-    })
+    'languages': AVAILABLE_LANGUAGES,
+    'asr_ready': asr_pipeline is not None
+})
+    emit('status', {'message': 'Connected to server'})
+
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -368,41 +322,25 @@ def handle_disconnect():
 def handle_audio_chunk(data):
     try:
         if asr_pipeline is None:
-            emit('error', {'message': 'ASR model not loaded. Please check server logs.'})
+            emit('error', {'message': 'ASR model not loaded'})
             return
         audio_data = base64.b64decode(data['audio'].split(',')[1])
         target_lang = data.get('target_lang', '')
         if len(audio_data) < 100:
-            emit('transcription_result', {'original': 'Audio too short','translated': '','language': target_lang,'success': False})
+            emit('transcription_result', {'original': 'Audio too short','translated': '', 'language': target_lang,'success': False})
             return
         samples, sample_rate = process_webm_audio(audio_data)
-        transcribed_text = transcribe_audio(samples, sample_rate)
-        if transcribed_text and not transcribed_text.startswith("Transcription error"):
-            logger.info(f"Transcribed: {transcribed_text}")
-            translated_text = ""
-            if target_lang and target_lang in translation_pipelines:
-                translated_text = translate_text(transcribed_text, target_lang)
-                if translated_text and not translated_text.startswith("Translation error"):
-                    logger.info(f"Translated to {target_lang}: {translated_text}")
-            emit('transcription_result', {'original': transcribed_text,'translated': translated_text,'language': target_lang,'success': True})
-        else:
-            emit('transcription_result', {'original': transcribed_text,'translated': '','language': target_lang,'success': False})
+        transcribed_text, detected_lang = transcribe_audio(samples, sample_rate)
+        translated_text = ""
+        if target_lang and transcribed_text and not transcribed_text.startswith("Transcription error"):
+            translated_text = translate_text(transcribed_text, detected_lang, target_lang)
+        emit('transcription_result', {'original': transcribed_text,'translated': translated_text,'language': target_lang,'success': True})
     except Exception as e:
         logger.error(f"Error processing audio chunk: {e}")
         emit('error', {'message': f'Processing error: {str(e)}'})
 
-# ----- Main entrypoint -----
+# ----- Main -----
 if __name__ == '__main__':
     logger.info("Loading models...")
     load_models()
-    if asr_pipeline is None:
-        logger.error("Critical: ASR model failed to load. Server cannot function.")
-    else:
-        logger.info(f"Loaded {len(translation_pipelines)} translation models")
-        available_langs = list(translation_pipelines.keys())
-        if available_langs:
-            logger.info(f"Available translation languages: {', '.join(available_langs)}")
-        else:
-            logger.warning("No translation models loaded. Only transcription will work.")
-    logger.info("Starting server...")
     socketio.run(app, host='0.0.0.0', port=5000, debug=True, allow_unsafe_werkzeug=True)
