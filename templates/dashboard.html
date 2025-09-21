@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Real-time Speech Translation</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #f5f5f5;
+      }
+      .container {
+        background-color: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      .controls {
+        margin-bottom: 20px;
+      }
+      button {
+        padding: 10px 15px;
+        margin: 5px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 16px;
+      }
+      #startBtn {
+        background-color: #4caf50;
+        color: white;
+      }
+      #stopBtn {
+        background-color: #f44336;
+        color: white;
+      }
+      button:disabled {
+        background-color: #cccccc;
+        cursor: not-allowed;
+      }
+      .results {
+        margin-top: 20px;
+        border-top: 1px solid #eee;
+        padding-top: 20px;
+      }
+      .result-box {
+        margin-bottom: 15px;
+        padding: 10px;
+        background-color: #f9f9f9;
+        border-radius: 4px;
+        min-height: 20px;
+      }
+      .status {
+        margin-top: 10px;
+        padding: 10px;
+        background-color: #e7f3fe;
+        border-left: 4px solid #2196f3;
+      }
+      select {
+        padding: 10px;
+        margin: 5px;
+        border-radius: 4px;
+        border: 1px solid #ddd;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div
+        style="
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 20px;
+          padding-bottom: 15px;
+          border-bottom: 1px solid #eee;
+        "
+      >
+        <h1 style="margin: 0; color: #333">Real-time Speech Translation</h1>
+        <div style="display: flex; align-items: center; gap: 15px">
+          <span style="color: #666; font-size: 14px"
+            >Welcome, <strong style="color: #333">{{ username }}</strong>!</span
+          >
+          <a
+            href="{{ url_for('logout') }}"
+            class="btn btn-danger"
+            style="
+              padding: 10px 20px;
+              background-color: #dc3545;
+              color: white;
+              text-decoration: none;
+              border-radius: 6px;
+              font-size: 14px;
+              font-weight: 500;
+              transition: background-color 0.2s ease;
+              border: none;
+              cursor: pointer;
+            "
+            onmouseover="this.style.backgroundColor='#c82333'"
+            onmouseout="this.style.backgroundColor='#dc3545'"
+            >Logout</a
+          >
+        </div>
+      </div>
+
+      <div class="controls">
+        <select id="languageSelect">
+          <option value="">Select target language</option>
+          <option value="es">Spanish</option>
+          <option value="fr">French</option>
+          <option value="de">German</option>
+        </select>
+
+        <button id="startBtn" onclick="startRecording()">
+          Start Recording
+        </button>
+        <button id="stopBtn" onclick="stopRecording()" disabled>
+          Stop Recording
+        </button>
+      </div>
+
+      <div class="status" id="status">Ready to start</div>
+
+      <div class="results">
+        <h3>Original Text (English):</h3>
+        <div class="result-box" id="originalText">-</div>
+
+        <h3>Translated Text:</h3>
+        <div class="result-box" id="translatedText">-</div>
+      </div>
+    </div>
+
+    <script>
+      let mediaRecorder;
+      let audioContext;
+      let isRecording = false;
+      let socket;
+      let stream;
+
+      // Connect to server
+      document.addEventListener("DOMContentLoaded", function () {
+        socket = io();
+
+        socket.on("connect", function () {
+          updateStatus("Connected to server");
+        });
+
+        socket.on("disconnect", function () {
+          updateStatus("Disconnected from server");
+        });
+
+        socket.on("status", function (data) {
+          updateStatus(data.message);
+        });
+
+        socket.on("available_languages", function (data) {
+          if (!data.asr_ready) {
+            updateStatus("ASR model not ready. Please wait...");
+            document.getElementById("startBtn").disabled = true;
+          }
+        });
+
+        socket.on("transcription_result", function (data) {
+          document.getElementById("originalText").textContent = data.original;
+          document.getElementById("translatedText").textContent =
+            data.translated || "No translation available";
+
+          if (data.success) {
+            updateStatus("Processing complete");
+          } else {
+            updateStatus("Processing failed: " + data.original);
+          }
+        });
+
+        socket.on("error", function (data) {
+          updateStatus("Error: " + data.message);
+        });
+      });
+
+      function updateStatus(message) {
+        document.getElementById("status").textContent = message;
+      }
+
+      async function startRecording() {
+        const targetLang = document.getElementById("languageSelect").value;
+        if (!targetLang) {
+          alert("Please select a target language first");
+          return;
+        }
+
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              channelCount: 1,
+              sampleRate: 16000,
+              echoCancellation: true,
+              noiseSuppression: true,
+            },
+          });
+
+          // Create audio context for processing
+          audioContext = new AudioContext({ sampleRate: 16000 });
+          const source = audioContext.createMediaStreamSource(stream);
+
+          // Create a simple gain node to avoid feedback loop
+          const gainNode = audioContext.createGain();
+          gainNode.gain.value = 0; // Mute output to prevent echo
+
+          source.connect(gainNode);
+
+          // Use MediaRecorder with proper settings
+          const options = {
+            mimeType: "audio/webm;codecs=opus",
+            audioBitsPerSecond: 16000,
+          };
+
+          // Check if the browser supports the mimeType
+          if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+            console.warn(
+              "WebM with Opus not supported, falling back to default"
+            );
+            delete options.mimeType;
+          }
+
+          mediaRecorder = new MediaRecorder(stream, options);
+
+          // Store chunks and send them as complete recordings
+          let chunks = [];
+          mediaRecorder.ondataavailable = function (event) {
+            if (event.data.size > 0) {
+              chunks.push(event.data);
+            }
+          };
+
+          mediaRecorder.onstop = function () {
+            // Create a complete blob from all chunks
+            const blob = new Blob(chunks, { type: "audio/webm" });
+            chunks = []; // Reset chunks
+
+            const reader = new FileReader();
+            reader.onload = function () {
+              const base64Audio = reader.result;
+              if (socket && socket.connected) {
+                socket.emit("audio_chunk", {
+                  audio: base64Audio,
+                  target_lang: targetLang,
+                });
+              }
+            };
+            reader.readAsDataURL(blob);
+          };
+
+          // Start recording
+          mediaRecorder.start(1000); // Collect data every second
+          isRecording = true;
+
+          document.getElementById("startBtn").disabled = true;
+          document.getElementById("stopBtn").disabled = false;
+          updateStatus("Recording...");
+        } catch (error) {
+          console.error("Error starting recording:", error);
+          updateStatus("Error: " + error.message);
+        }
+      }
+
+      function stopRecording() {
+        if (mediaRecorder && isRecording) {
+          mediaRecorder.stop();
+          isRecording = false;
+
+          if (audioContext) {
+            audioContext.close();
+          }
+
+          if (stream) {
+            stream.getTracks().forEach((track) => track.stop());
+          }
+
+          document.getElementById("startBtn").disabled = false;
+          document.getElementById("stopBtn").disabled = true;
+          updateStatus("Recording stopped");
+        }
+      }
+    </script>
+  </body>
+</html>
