@@ -10,6 +10,7 @@ import tempfile
 import json
 import subprocess
 import shutil
+import requests
 from transformers import pipeline, M2M100ForConditionalGeneration, M2M100Tokenizer
 import torchaudio
 import soundfile as sf
@@ -74,8 +75,8 @@ Session(app)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # OAuth Configuration
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", None)
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", None)
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "252431109862-84oc6jel5i65t52g4v87htjdl5ir2g6v.apps.googleusercontent.com")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "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")
 
 # Initialize OAuth
 oauth = OAuth(app)
@@ -361,6 +362,103 @@ def debug_oauth():
         'redirect_uri_example': url_for('google_callback', _external=True)
     }
     return f"<pre>{debug_info}</pre>"
+
+@app.route('/api/google_auth_url', methods=['GET'])
+def get_google_auth_url():
+    """Returns the Google OAuth authorization URL for frontend to redirect to"""
+    if not google or not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        logger.error(f"Google not configured: google={google}, client_id={bool(GOOGLE_CLIENT_ID)}, client_secret={bool(GOOGLE_CLIENT_SECRET)}")
+        return {'error': 'Google login is not configured'}, 400
+    try:
+        redirect_uri = 'http://localhost:5173/google_callback'
+        # Manually construct the authorization URL
+        auth_url = (
+            f"https://accounts.google.com/o/oauth2/auth?"
+            f"client_id={GOOGLE_CLIENT_ID}&"
+            f"redirect_uri={redirect_uri}&"
+            f"response_type=code&"
+            f"scope=email+profile&"
+            f"access_type=offline"
+        )
+        logger.info(f"Generated auth URL successfully")
+        return {'auth_url': auth_url}
+    except Exception as e:
+        logger.error(f"Error generating auth URL: {e}", exc_info=True)
+        return {'error': f'Error generating auth URL: {str(e)}'}, 500
+
+@app.route('/api/google_callback', methods=['POST'])
+def google_callback_api():
+    """Handles OAuth callback from frontend and exchanges code for token"""
+    if not google or not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        return {'error': 'Google login is not configured'}, 400
+    
+    try:
+        data = request.get_json()
+        if not data:
+            logger.error("No JSON data in request")
+            return {'error': 'No data provided'}, 400
+            
+        code = data.get('code')
+        
+        if not code:
+            logger.error("No authorization code provided")
+            return {'error': 'No authorization code provided'}, 400
+        
+        redirect_uri = 'http://localhost:5173/google_callback'
+        
+        # Exchange authorization code for token using requests
+        token_url = 'https://oauth2.googleapis.com/token'
+        token_data = {
+            'code': code,
+            'client_id': GOOGLE_CLIENT_ID,
+            'client_secret': GOOGLE_CLIENT_SECRET,
+            'redirect_uri': redirect_uri,
+            'grant_type': 'authorization_code'
+        }
+        
+        logger.info(f"Exchanging code for token...")
+        token_response = requests.post(token_url, data=token_data)
+        token_json = token_response.json()
+        
+        if 'error' in token_json:
+            logger.error(f"Token exchange failed: {token_json}")
+            return {'error': f'Token exchange failed: {token_json["error"]}'}, 400
+        
+        access_token = token_json.get('access_token')
+        logger.info(f"Token exchange successful")
+        
+        # Get user info
+        user_info_url = 'https://www.googleapis.com/oauth2/v2/userinfo'
+        headers = {'Authorization': f'Bearer {access_token}'}
+        user_response = requests.get(user_info_url, headers=headers)
+        user_info = user_response.json()
+        
+        if 'error' in user_info:
+            logger.error(f"Failed to get user info: {user_info}")
+            return {'error': f'Failed to get user info: {user_info["error"]}'}, 400
+        
+        email = user_info.get('email')
+        if not email:
+            logger.error("No email provided by Google")
+            return {'error': 'No email provided by Google'}, 400
+        
+        user = mongo.db.users.find_one({"username": email})
+        if not user:
+            mongo.db.users.insert_one({
+                "username": email, "name": user_info.get("name"), "email": email,
+                "google_id": user_info.get("id"), "auth_type": "google", "profile": user_info
+            })
+            logger.info(f"New user created: {email}")
+        else:
+            mongo.db.users.update_one({"_id": user["_id"]}, {"$set": {"google_id": user_info.get("id"), "profile": user_info}})
+            logger.info(f"User updated: {email}")
+        
+        session["user"] = email
+        logger.info(f"User {email} logged in successfully")
+        return {'success': True, 'user': email, 'message': 'Successfully logged in with Google!'}
+    except Exception as e:
+        logger.error(f"Google OAuth error: {e}", exc_info=True)
+        return {'error': f'Google OAuth error: {str(e)}'}, 400
 
 @app.route('/google_login')
 def google_login():

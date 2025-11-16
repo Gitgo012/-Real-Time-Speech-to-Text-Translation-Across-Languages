@@ -1,36 +1,52 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
 
-// https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
   server: {
+    host: "localhost",
+    port: 5173,
     proxy: {
-      '/socket.io': {
-        target: 'http://localhost:5000',
+      "/socket.io": {
+        target: "http://localhost:5000",
         ws: true,
         changeOrigin: true,
+        secure: false,
+
+        // IMPORTANT: forward cookies to Flask
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq, req) => {
+            if (req.headers.cookie) {
+              proxyReq.setHeader("cookie", req.headers.cookie);
+            }
+          });
+        },
       },
-      '/register': {
-        target: 'http://localhost:5000',
+
+      "/api": {
+        target: "http://localhost:5000",
         changeOrigin: true,
       },
-      '/login': {
-        target: 'http://localhost:5000',
+      "/register": {
+        target: "http://localhost:5000",
         changeOrigin: true,
       },
-      '/logout': {
-        target: 'http://localhost:5000',
+      "/login": {
+        target: "http://localhost:5000",
         changeOrigin: true,
       },
-      '/google_login': {
-        target: 'http://localhost:5000',
+      "/logout": {
+        target: "http://localhost:5000",
         changeOrigin: true,
       },
-      '/dashboard': {
-        target: 'http://localhost:5000',
+      "/google_login": {
+        target: "http://localhost:5000",
+        changeOrigin: true,
+      },
+      "/dashboard": {
+        target: "http://localhost:5000",
         changeOrigin: true,
       },
     },
   },
-})
+});

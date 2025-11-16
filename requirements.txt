@@ -9,6 +9,7 @@ torch==2.7.1
 torchaudio==2.7.1
 transformers>=4.38.0
 numpy>=1.26.4
+requests>=2.31.0
 # pydub==0.25.1  # Optional: Not compatible with Python 3.13 (audioop removed). Using torchaudio instead.
 soundfile>=0.12.1
 # eventlet==0.33.3  # Not compatible with Python 3.13. Using threading mode instead.

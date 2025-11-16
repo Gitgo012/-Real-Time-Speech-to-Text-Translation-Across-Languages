@@ -21,8 +21,8 @@ function Dashboard({ user, onLogout }) {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Initialize WebSocket connection - connect to Flask server
-    socketRef.current = io('http://localhost:5000', {
+    // Initialize WebSocket connection - use proxy through Vite
+    socketRef.current = io({
       withCredentials: true,
       transports: ['websocket', 'polling']
     });
