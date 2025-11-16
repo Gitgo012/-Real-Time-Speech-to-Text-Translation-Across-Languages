@@ -445,4 +445,15 @@ if __name__ == '__main__':
     logger.info("Loading models...")
     load_models()
     logger.info("Starting Flask-SocketIO server on http://0.0.0.0:5000")
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True, allow_unsafe_werkzeug=True)
+    # Running with the Werkzeug reloader or debug mode can cause WSGI
+    # lifecycle issues when using Flask-SocketIO with certain async modes
+    # (see AssertionError: write() before start_response). Disable the
+    # reloader/debug here and run the server in a single process/thread.
+    socketio.run(
+        app,
+        host='0.0.0.0',
+        port=5000,
+        debug=False,
+        use_reloader=False,
+        allow_unsafe_werkzeug=True,
+    )
