@@ -7,8 +7,9 @@ import io
 import base64
 import logging
 import tempfile
-from pydub import AudioSegment
 import json
+import subprocess
+import shutil
 from transformers import pipeline, M2M100ForConditionalGeneration, M2M100Tokenizer
 import torchaudio
 import soundfile as sf
@@ -52,6 +53,14 @@ except ImportError:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Try to import pydub, but make it optional (Python 3.13 removed audioop)
+try:
+    from pydub import AudioSegment
+    PYDUB_AVAILABLE = True
+except (ImportError, ModuleNotFoundError):
+    PYDUB_AVAILABLE = False
+    logger.warning("pydub not available (audioop removed in Python 3.13). Using torchaudio instead.")
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'fallback-dev-key-12345')
 app.config["MONGO_URI"] = os.getenv("MONGO_URI", "mongodb://localhost:27017/realtimeASR")
@@ -61,7 +70,8 @@ mongo = PyMongo(app)
 bcrypt = Bcrypt(app)
 Session(app)
 
-socketio = SocketIO(app, cors_allowed_origins="*")
+# Use threading instead of eventlet for Python 3.13 compatibility
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # OAuth Configuration
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", None)
@@ -120,40 +130,131 @@ def load_models():
         m2m_tokenizer = None
 
 # ----- Audio processing -----
+def check_ffmpeg():
+    """Check if ffmpeg is available in the system."""
+    return shutil.which("ffmpeg") is not None
+
 def process_webm_audio(audio_data):
+    """
+    Process WebM audio data and convert to 16kHz mono WAV format.
+    Uses ffmpeg to convert WebM to WAV, then torchaudio to process.
+    Falls back to pydub if ffmpeg is not available.
+    """
+    tmp_name = None
+    wav_name = None
     try:
+        # Write audio data to temporary file
         with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as tmp:
             tmp_name = tmp.name
             tmp.write(audio_data)
             tmp.flush()
-        tmp.close()
-        try:
-            audio = AudioSegment.from_file(tmp_name, format="webm")
-            audio = audio.set_channels(1).set_frame_rate(16000)
-            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as wav_tmp:
-                wav_name = wav_tmp.name
+        
+        # Method 1: Use ffmpeg to convert WebM to WAV, then torchaudio
+        if check_ffmpeg():
+            try:
+                wav_name = tmp_name.replace('.webm', '.wav')
+                # Convert WebM to WAV using ffmpeg
+                ffmpeg_cmd = [
+                    'ffmpeg',
+                    '-i', tmp_name,
+                    '-ar', '16000',  # Sample rate 16kHz
+                    '-ac', '1',      # Mono channel
+                    '-f', 'wav',     # WAV format
+                    '-y',            # Overwrite output file
+                    wav_name
+                ]
+                
+                # Run ffmpeg silently
+                result = subprocess.run(
+                    ffmpeg_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=10
+                )
+                
+                if result.returncode == 0 and os.path.exists(wav_name):
+                    # Load with torchaudio
+                    waveform, sample_rate = torchaudio.load(wav_name)
+                    # Ensure mono
+                    if waveform.shape[0] > 1:
+                        waveform = waveform.mean(dim=0, keepdim=True)
+                    else:
+                        waveform = waveform.squeeze(0).unsqueeze(0)
+                    
+                    # Convert to numpy
+                    samples = waveform.squeeze(0).numpy().astype(np.float32)
+                    
+                    # Clean up
+                    try:
+                        os.unlink(tmp_name)
+                        os.unlink(wav_name)
+                    except:
+                        pass
+                    
+                    return samples, 16000
+                else:
+                    logger.warning(f"ffmpeg conversion failed: {result.stderr.decode()}")
+            except Exception as ffmpeg_error:
+                logger.warning(f"ffmpeg processing failed: {ffmpeg_error}")
+        
+        # Method 2: Try pydub if available
+        if PYDUB_AVAILABLE:
+            try:
+                audio = AudioSegment.from_file(tmp_name, format="webm")
+                audio = audio.set_channels(1).set_frame_rate(16000)
+                if not wav_name:
+                    wav_name = tmp_name.replace('.webm', '.wav')
                 audio.export(wav_name, format="wav")
-            samples, sample_rate = sf.read(wav_name, dtype='float32')
+                samples, sample_rate = sf.read(wav_name, dtype='float32')
+                
+                # Clean up
+                try:
+                    os.unlink(tmp_name)
+                    if wav_name and os.path.exists(wav_name):
+                        os.unlink(wav_name)
+                except:
+                    pass
+                
+                return samples, sample_rate
+            except Exception as pydub_error:
+                logger.warning(f"pydub processing failed: {pydub_error}")
+        
+        # Method 3: Try direct torchaudio load (may work if backend supports WebM)
+        try:
+            waveform, sample_rate = torchaudio.load(tmp_name)
+            if waveform.shape[0] > 1:
+                waveform = waveform.mean(dim=0, keepdim=True)
+            else:
+                waveform = waveform.squeeze(0).unsqueeze(0)
+            
+            if sample_rate != 16000:
+                resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=16000)
+                waveform = resampler(waveform)
+            
+            samples = waveform.squeeze(0).numpy().astype(np.float32)
+            
             try:
                 os.unlink(tmp_name)
+            except:
+                pass
+            
+            return samples, 16000
+        except Exception as torch_error:
+            logger.error(f"torchaudio direct load failed: {torch_error}")
+            raise Exception(f"Unable to process WebM audio. Please install ffmpeg or ensure pydub is available. Error: {torch_error}")
+                
+    except Exception as e:
+        logger.error(f"Audio processing error: {e}")
+        if tmp_name:
+            try:
+                os.unlink(tmp_name)
+            except:
+                pass
+        if wav_name and os.path.exists(wav_name):
+            try:
                 os.unlink(wav_name)
             except:
                 pass
-            return samples, sample_rate
-        except Exception as e:
-            waveform, sample_rate = torchaudio.load(tmp_name)
-            waveform = waveform.mean(dim=0)
-            samples = waveform.numpy().astype(np.float32)
-            if sample_rate != 16000:
-                resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=16000)
-                samples = resampler(torch.from_numpy(samples)).numpy()
-            try:
-                os.unlink(tmp_name)
-            except:
-                pass
-            return samples, 16000
-    except Exception as e:
-        logger.error(f"Audio processing error: {e}")
         raise e
 
 # ----- ASR -----
@@ -343,4 +444,5 @@ def handle_audio_chunk(data):
 if __name__ == '__main__':
     logger.info("Loading models...")
     load_models()
+    logger.info("Starting Flask-SocketIO server on http://0.0.0.0:5000")
     socketio.run(app, host='0.0.0.0', port=5000, debug=True, allow_unsafe_werkzeug=True)
