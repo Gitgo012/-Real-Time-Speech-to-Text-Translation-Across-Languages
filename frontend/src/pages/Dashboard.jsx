@@ -22,7 +22,8 @@ function Dashboard({ user, onLogout }) {
 
   useEffect(() => {
     // Initialize WebSocket connection - use proxy through Vite
-    socketRef.current = io({
+    const socketServerUrl = import.meta.env.VITE_SOCKET_URL || undefined;
+    socketRef.current = io(socketServerUrl, {
       withCredentials: true,
       transports: ['websocket', 'polling']
     });
