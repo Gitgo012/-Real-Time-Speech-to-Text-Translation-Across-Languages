@@ -48,9 +48,28 @@ function SignUp({ onSignUp }) {
         validateStatus: (status) => status >= 200 && status < 400
       });
 
-      // If successful, redirect to login
-      onSignUp({ username: formData.email, fullName: formData.fullName });
-      navigate('/login');
+      // Automatically log the user in after successful signup
+      try {
+        const loginData = new FormData();
+        loginData.append('username', formData.email);
+        loginData.append('password', formData.password);
+
+        await axios.post('/login', loginData, {
+          withCredentials: true,
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+          maxRedirects: 0,
+          validateStatus: (status) => status >= 200 && status < 400
+        });
+
+        onSignUp({ username: formData.email, fullName: formData.fullName });
+        navigate('/dashboard');
+      } catch (loginErr) {
+        console.error('Auto login after signup failed:', loginErr);
+        // Fallback: direct user to login page
+        navigate('/login');
+      }
     } catch (err) {
       if (err.response?.status === 302 || err.response?.status === 200) {
         // Redirect happened, go to login

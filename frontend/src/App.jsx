@@ -5,6 +5,7 @@ import {
   Navigate,
 } from "react-router-dom";
 import { useState, useEffect } from "react";
+import axios from "axios";
 import SignUp from "./pages/SignUp";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -16,9 +17,23 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check if user is logged in by trying to access dashboard
-    // Since backend doesn't have API endpoint, we'll handle auth in Dashboard component
-    setLoading(false);
+    const checkSession = async () => {
+      try {
+        const response = await axios.get("/api/session_check");
+        if (response.data?.logged_in) {
+          setUser({ username: response.data.user });
+        } else {
+          setUser(null);
+        }
+      } catch (error) {
+        console.error("Session check failed:", error);
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkSession();
   }, []);
 
   if (loading) {

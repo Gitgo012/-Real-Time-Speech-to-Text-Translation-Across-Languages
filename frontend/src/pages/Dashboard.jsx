@@ -13,7 +13,9 @@ function Dashboard({ user, onLogout }) {
   const [availableLanguages, setAvailableLanguages] = useState({});
   const [translationHistory, setTranslationHistory] = useState([]);
   const [status, setStatus] = useState('Ready to start');
-  
+  const [loading, setLoading] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+
   const socketRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const streamRef = useRef(null);
@@ -21,68 +23,109 @@ function Dashboard({ user, onLogout }) {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Initialize WebSocket connection - use proxy through Vite
-    socketRef.current = io({
-      withCredentials: true,
-      transports: ['websocket', 'polling']
-    });
-
-    socketRef.current.on('connect', () => {
-      console.log('WebSocket connected');
-      setStatus('Connected to server');
-    });
-
-    socketRef.current.on('disconnect', () => {
-      console.log('WebSocket disconnected');
-      setStatus('Disconnected from server');
-    });
-
-    socketRef.current.on('available_languages', (data) => {
-      console.log('Received available languages:', data);
-      if (data && data.languages) {
-        setAvailableLanguages(data.languages);
-        // Set default target language if not set (use Spanish as default)
-        setTargetLang(prev => prev || 'es');
-        // Set default source language (English)
-        setSourceLang(prev => prev || 'en');
-      }
-      if (!data.asr_ready) {
-        setStatus('ASR model not ready. Please wait...');
-      } else {
-        setStatus('Ready to start');
-      }
-    });
-
-    socketRef.current.on('transcription_result', (data) => {
-      console.log('Received transcription result:', data);
-      if (data.success) {
-        setOriginalText(data.original || 'Your original speech will appear here...');
-        setTranslatedText(data.translated || 'Your translated speech will appear here...');
-        setStatus('Processing complete');
-        
-        // Add to history
-        if (data.original && data.translated) {
-          const historyItem = {
-            id: Date.now(),
-            timestamp: new Date().toISOString(),
-            sourceLang: sourceLang,
-            targetLang: targetLang,
-            original: data.original,
-            translated: data.translated
-          };
-          setTranslationHistory(prev => [historyItem, ...prev].slice(0, 50)); // Keep last 50
+    // Wait a bit for session cookie to be set after login/register
+    const connectSocket = async () => {
+      // First, verify session is set
+      try {
+        const sessionCheck = await axios.get('/api/session_check');
+        console.log('Session check:', sessionCheck.data);
+        if (!sessionCheck.data.logged_in) {
+          setStatus('Not logged in. Please login first.');
+          return;
         }
-      } else {
-        setStatus('Processing failed: ' + data.original);
+      } catch (err) {
+        console.error('Session check failed:', err);
+        setStatus('Session check failed. Please refresh and login again.');
+        return;
       }
-    });
 
-    socketRef.current.on('error', (data) => {
-      console.error('WebSocket error:', data);
-      setStatus('Error: ' + data.message);
-    });
+      // Initialize WebSocket connection - use proxy through Vite
+      const socketServerUrl = import.meta.env.VITE_SOCKET_URL || undefined;
+      socketRef.current = io(socketServerUrl, {
+        withCredentials: true,
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionDelay: 1000,
+        reconnectionAttempts: 5
+      });
 
+      socketRef.current.on('connect', () => {
+        console.log('WebSocket connected');
+        setStatus('Connected to server');
+      });
+
+      socketRef.current.on('disconnect', (reason) => {
+        console.log('WebSocket disconnected:', reason);
+        if (reason === 'io server disconnect') {
+          // Server disconnected, try to reconnect
+          socketRef.current.connect();
+        } else {
+          setStatus('Disconnected from server');
+        }
+      });
+
+      socketRef.current.on('connect_error', (error) => {
+        console.error('WebSocket connection error:', error);
+        setStatus('Connection error. Retrying...');
+      });
+
+      socketRef.current.on('available_languages', (data) => {
+        console.log('Received available languages:', data);
+        if (data && data.languages) {
+          setAvailableLanguages(data.languages);
+          // Set default target language if not set (use Spanish as default)
+          setTargetLang(prev => prev || 'es');
+          // Set default source language (English)
+          setSourceLang(prev => prev || 'en');
+        }
+        if (!data.asr_ready) {
+          setStatus('ASR model not ready. Please wait...');
+        } else {
+          setStatus('Ready to start');
+        }
+      });
+
+      socketRef.current.on('transcription_result', (data) => {
+        console.log('Received transcription result:', data);
+        if (data.success) {
+          setOriginalText(data.original || 'Your original speech will appear here...');
+          setTranslatedText(data.translated || 'Your translated speech will appear here...');
+          setLoading(false);
+          setIsProcessing(false);
+          setStatus('Processing complete');
+          
+          // Add to history
+          if (data.original && data.translated) {
+            const historyItem = {
+              id: Date.now(),
+              timestamp: new Date().toISOString(),
+              sourceLang: sourceLang,
+              targetLang: targetLang,
+              original: data.original,
+              translated: data.translated
+            };
+            setTranslationHistory(prev => [historyItem, ...prev].slice(0, 50)); // Keep last 50
+          }
+        } else {
+          setLoading(false);
+          setIsProcessing(false);
+          setStatus('Processing failed: ' + data.original);
+        }
+      });
+
+      socketRef.current.on('error', (data) => {
+        console.error('WebSocket error:', data);
+        setLoading(false);
+        setIsProcessing(false);
+        setStatus('Error: ' + data.message);
+      });
+    };
+
+    // Small delay to ensure session cookie is set
+    const timer = setTimeout(connectSocket, 500);
+    
     return () => {
+      clearTimeout(timer);
       if (socketRef.current) {
         socketRef.current.disconnect();
       }
@@ -91,6 +134,11 @@ function Dashboard({ user, onLogout }) {
   }, []);
 
   const startRecording = async () => {
+    if (isProcessing) {
+      setStatus('Please wait for the current translation to finish.');
+      return;
+    }
+
     if (!targetLang || targetLang === '') {
       alert('Please select a target language first');
       return;
@@ -131,6 +179,9 @@ function Dashboard({ user, onLogout }) {
       };
 
       mediaRecorder.onstop = () => {
+        setIsProcessing(true);
+        setLoading(true);
+        setStatus('Translating...');
         const blob = new Blob(chunks, { type: 'audio/webm' });
         chunks = [];
 
@@ -208,6 +259,14 @@ function Dashboard({ user, onLogout }) {
 
   return (
     <div className="dashboard">
+      {loading && (
+        <div className="loader-popup">
+          <div className="loader-card">
+            <div className="spinner"></div>
+            <p className="loader-text">{status || 'Processing...'}</p>
+          </div>
+        </div>
+      )}
       <div className="dashboard-header">
         <div className="header-left">
           <h1 className="app-title">🎤 Real-Time STT Translation</h1>
@@ -223,6 +282,7 @@ function Dashboard({ user, onLogout }) {
           </div>
         </div>
       </div>
+
 
       <div className="dashboard-content">
         <div className="dashboard-main">
@@ -280,7 +340,7 @@ function Dashboard({ user, onLogout }) {
               <button
                 className={`btn ${isRecording ? 'btn-stop' : 'btn-primary'}`}
                 onClick={isRecording ? stopRecording : startRecording}
-                disabled={!targetLang}
+                disabled={!targetLang || isProcessing}
               >
                 {isRecording ? '⏹ Stop Recording' : '▶ Start Recording'}
               </button>

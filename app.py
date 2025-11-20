@@ -66,25 +66,36 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'fallback-dev-key-12345')
 app.config["MONGO_URI"] = os.getenv("MONGO_URI", "mongodb://localhost:27017/realtimeASR")
 app.config["SESSION_TYPE"] = "filesystem"
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SECURE"] = False  # Set to True in production with HTTPS
+app.config["SESSION_COOKIE_DOMAIN"] = None  # Allow cookies to work across subdomains if needed
+app.config["SESSION_COOKIE_PATH"] = "/"  # Make sure cookie is available for all paths
 
 mongo = PyMongo(app)
 bcrypt = Bcrypt(app)
 Session(app)
 
 # Use threading instead of eventlet for Python 3.13 compatibility
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+# Allow credentials for WebSocket connections
+socketio = SocketIO(
+    app, 
+    cors_allowed_origins="*", 
+    async_mode='threading',
+    manage_session=True,
+    cookie=None  # Let Flask handle cookies
+)
 
 # OAuth Configuration
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "252431109862-84oc6jel5i65t52g4v87htjdl5ir2g6v.apps.googleusercontent.com")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "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")
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
 
 # Initialize OAuth
 oauth = OAuth(app)
 google = None
 
-if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
-    logger.warning("Google OAuth client id/secret not set. Google login will not work until env vars are provided.")
-else:
+# Only configure Google OAuth if both values are provided and not empty
+if GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET and len(GOOGLE_CLIENT_ID) > 0 and len(GOOGLE_CLIENT_SECRET) > 0:
     google = oauth.register(
         name="google",
         client_id=GOOGLE_CLIENT_ID,
@@ -95,6 +106,8 @@ else:
         client_kwargs={"scope": "email profile"},
     )
     logger.info("Google OAuth client registered successfully")
+else:
+    logger.info("Google OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET env vars to enable Google login.")
 
 # ----- Model setup -----
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -300,6 +313,17 @@ def translate_text(text, source_lang, target_lang_code):
         return f"Translation error: {str(e)}"
 
 # ----- Routes -----
+@app.route('/health')
+def health():
+    """Health check endpoint for Docker"""
+    return {'status': 'healthy', 'asr_ready': asr_pipeline is not None}, 200
+
+@app.route('/api/session_check')
+def session_check():
+    """Check if user is logged in via session"""
+    user = session.get("user")
+    return {'logged_in': user is not None, 'user': user, 'session_keys': list(session.keys())}, 200
+
 @app.route('/')
 def index():
     if "user" in session:
@@ -370,7 +394,7 @@ def get_google_auth_url():
         logger.error(f"Google not configured: google={google}, client_id={bool(GOOGLE_CLIENT_ID)}, client_secret={bool(GOOGLE_CLIENT_SECRET)}")
         return {'error': 'Google login is not configured'}, 400
     try:
-        redirect_uri = 'http://localhost:5173/google_callback'
+        redirect_uri = 'http://localhost:8080/google_callback'
         # Manually construct the authorization URL
         auth_url = (
             f"https://accounts.google.com/o/oauth2/auth?"
@@ -404,7 +428,7 @@ def google_callback_api():
             logger.error("No authorization code provided")
             return {'error': 'No authorization code provided'}, 400
         
-        redirect_uri = 'http://localhost:5173/google_callback'
+        redirect_uri = 'http://localhost:8080/google_callback'
         
         # Exchange authorization code for token using requests
         token_url = 'https://oauth2.googleapis.com/token'
@@ -500,17 +524,27 @@ def google_callback():
 
 # ----- SocketIO events -----
 @socketio.on('connect')
-def handle_connect():
-    if "user" not in session:
-        emit('error', {'message': 'Unauthorized - please login first'})
-        disconnect()
-        return
-    logger.info(f'Client connected (user={session.get("user")})')
-    emit('available_languages', {
-    'languages': AVAILABLE_LANGUAGES,
-    'asr_ready': asr_pipeline is not None
-})
-    emit('status', {'message': 'Connected to server'})
+def handle_connect(auth):
+    """Handle WebSocket connection with session authentication"""
+    try:
+        # Try to get user from session
+        user = session.get("user")
+        logger.info(f'WebSocket connect attempt - user in session: {user}, session keys: {list(session.keys())}')
+        
+        if not user:
+            logger.warning('WebSocket connection: no user in session')
+            # Allow connection but will check auth on first message
+            emit('error', {'message': 'Please login first'})
+            return
+        
+        logger.info(f'Client connected (user={user})')
+        emit('available_languages', {
+            'languages': AVAILABLE_LANGUAGES,
+            'asr_ready': asr_pipeline is not None
+        })
+        emit('status', {'message': 'Connected to server'})
+    except Exception as e:
+        logger.error(f'Error in WebSocket connect: {e}', exc_info=True)
 
 
 @socketio.on('disconnect')
@@ -520,6 +554,13 @@ def handle_disconnect():
 @socketio.on('audio_chunk')
 def handle_audio_chunk(data):
     try:
+        # Check authentication on first message
+        user = session.get("user")
+        if not user:
+            emit('error', {'message': 'Unauthorized - please login first'})
+            disconnect()
+            return
+        
         if asr_pipeline is None:
             emit('error', {'message': 'ASR model not loaded'})
             return
