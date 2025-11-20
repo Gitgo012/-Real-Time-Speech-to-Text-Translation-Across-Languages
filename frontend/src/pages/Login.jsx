@@ -31,29 +31,32 @@ function Login({ onLogin }) {
       formDataToSend.append("username", formData.email);
       formDataToSend.append("password", formData.password);
 
-      const response = await axios.post("/login", formDataToSend, {
+      await axios.post("/login", formDataToSend, {
         withCredentials: true,
         headers: {
           "Content-Type": "multipart/form-data",
         },
         maxRedirects: 0,
-        validateStatus: (status) => status >= 200 && status < 400,
+        validateStatus: () => true,
       });
 
-      // If successful, redirect to dashboard
-      onLogin({ username: formData.email });
-      navigate("/dashboard");
-    } catch (err) {
-      if (err.response?.status === 302 || err.response?.status === 200) {
-        // Redirect happened, go to dashboard
-        onLogin({ username: formData.email });
+      // After attempting login, verify session on the backend
+      const sessionRes = await axios.get("/api/session_check", {
+        withCredentials: true,
+      });
+
+      if (sessionRes.data?.logged_in) {
+        onLogin({ username: sessionRes.data.user });
         navigate("/dashboard");
       } else {
-        setError(
-          err.response?.data?.message ||
-            "Invalid credentials. Please try again."
-        );
+        setError("Invalid credentials. Please sign up first or try again.");
       }
+    } catch (err) {
+      console.error("Login error:", err);
+      setError(
+        err.response?.data?.message ||
+          "Login failed. Please check your credentials and try again."
+      );
     } finally {
       setLoading(false);
     }
