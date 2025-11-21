@@ -340,7 +340,7 @@ def test_mongo():
         # Create a test translation
         test_record = {
             'user_id': str(user_id),
-            'timestamp': _import_('datetime').datetime.utcnow().isoformat(),
+            'timestamp': __import__('datetime').datetime.utcnow().isoformat(),
             'sourceLang': 'en',
             'targetLang': 'es',
             'original': 'Test translation',
@@ -400,7 +400,7 @@ def save_translation():
         
         translation_record = {
             'user_id': str(user_id),
-            'timestamp': data.get('timestamp', _import_('datetime').datetime.utcnow().isoformat()),
+            'timestamp': data.get('timestamp', __import__('datetime').datetime.utcnow().isoformat()),
             'sourceLang': data.get('sourceLang'),
             'targetLang': data.get('targetLang'),
             'original': data.get('original'),
