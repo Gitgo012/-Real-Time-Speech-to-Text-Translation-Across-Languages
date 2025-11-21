@@ -14,13 +14,14 @@ services:
     volumes:
       - hf-cache:/models/cache
       - flask-sessions:/app/flask_session
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+    
+#   deploy:
+#     resources:
+#       reservations:
+#         devices:
+#           - driver: nvidia
+#             count: 1
+#             capabilities: [gpu]
     healthcheck:
       test:
         [
