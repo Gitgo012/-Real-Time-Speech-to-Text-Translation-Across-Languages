@@ -129,6 +129,8 @@ def load_models():
             chunk_length_s=30
         )
         logger.info("ASR model loaded successfully")
+        logger.info(f"ASR pipeline device: {asr_pipeline.model.device}")
+
     except Exception as e:
         logger.error(f"Failed to load ASR model: {e}")
         asr_pipeline = None
@@ -138,6 +140,7 @@ def load_models():
         m2m_model = M2M100ForConditionalGeneration.from_pretrained("facebook/m2m100_418M").to(device)
         m2m_tokenizer = M2M100Tokenizer.from_pretrained("facebook/m2m100_418M")
         logger.info("M2M100 model loaded successfully")
+        logger.info(f"Translation model device: {next(m2m_model.parameters()).device}")
     except Exception as e:
         logger.error(f"Failed to load M2M100 model: {e}")
         m2m_model = None

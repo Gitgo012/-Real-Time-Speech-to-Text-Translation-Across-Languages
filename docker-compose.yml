@@ -7,15 +7,28 @@ services:
       dockerfile: Dockerfile.backend
     environment:
       FLASK_SECRET_KEY: super-secret-key
-      MONGO_URI:  mongodb://host.docker.internal:27017/realtimeASR
+      MONGO_URI: mongodb://host.docker.internal:27017/realtimeASR
       # Uncomment and set these to enable Google OAuth:
       GOOGLE_CLIENT_ID: 252431109862-84oc6jel5i65t52g4v87htjdl5ir2g6v.apps.googleusercontent.com
       GOOGLE_CLIENT_SECRET: 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
     volumes:
       - hf-cache:/models/cache
       - flask-sessions:/app/flask_session
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=5).read()"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=5).read()",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -36,7 +49,3 @@ services:
 volumes:
   hf-cache:
   flask-sessions:
-
-
-
-
