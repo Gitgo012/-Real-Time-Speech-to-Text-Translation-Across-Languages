@@ -126,7 +126,7 @@ def load_models():
             model="openai/whisper-medium",
             device=device,
             torch_dtype=torch_dtype,
-            chunk_length_s=30
+            chunk_length_s=20
         )
         logger.info("ASR model loaded successfully")
         logger.info(f"ASR pipeline device: {asr_pipeline.model.device}")
@@ -326,6 +326,95 @@ def session_check():
     """Check if user is logged in via session"""
     user = session.get("user")
     return {'logged_in': user is not None, 'user': user, 'session_keys': list(session.keys())}, 200
+
+@app.route('/api/test_mongo')
+def test_mongo():
+    """Test MongoDB connection and create a test translation"""
+    try:
+        user_id = session.get("user")
+        if not user_id:
+            return {'error': 'Not logged in'}, 401
+        
+        logger.info(f"Testing MongoDB for user: {user_id}")
+        
+        # Create a test translation
+        test_record = {
+            'user_id': str(user_id),
+            'timestamp': _import_('datetime').datetime.utcnow().isoformat(),
+            'sourceLang': 'en',
+            'targetLang': 'es',
+            'original': 'Test translation',
+            'translated': 'Traducción de prueba',
+            'is_test': True
+        }
+        
+        result = mongo.db.translation_history.insert_one(test_record)
+        logger.info(f"Test record inserted with ID: {result.inserted_id}")
+        
+        # Retrieve it to verify
+        retrieved = mongo.db.translation_history.find_one({'_id': result.inserted_id})
+        
+        return {
+            'success': True,
+            'message': 'Test translation created successfully',
+            'inserted_id': str(result.inserted_id),
+            'retrieved': str(retrieved)
+        }, 200
+    except Exception as e:
+        logger.error(f"MongoDB test failed: {e}", exc_info=True)
+        return {'error': str(e)}, 500
+
+@app.route('/api/translation_history', methods=['GET'])
+def get_translation_history():
+    """Retrieve translation history for logged-in user"""
+    user_id = session.get("user")
+    if not user_id:
+        logger.warning("Translation history request: User not found in session")
+        return {'error': 'Not logged in'}, 401
+    
+    try:
+        logger.info(f"Fetching translation history for user_id: {user_id}")
+        
+        history = list(mongo.db.translation_history.find(
+            {'user_id': str(user_id)},
+            {'_id': 0}  # Exclude MongoDB _id field to keep it clean
+        ).sort('timestamp', -1).limit(50))
+        
+        logger.info(f"Retrieved {len(history)} translations for user {user_id}")
+        return {'history': history, 'user_id': str(user_id)}, 200
+    except Exception as e:
+        logger.error(f"Error retrieving translation history: {e}", exc_info=True)
+        return {'error': str(e)}, 500
+
+@app.route('/api/translation_history', methods=['POST'])
+def save_translation():
+    """Save a translation to the user's history"""
+    user_id = session.get("user")
+    if not user_id:
+        logger.warning("Save translation request: User not found in session")
+        return {'error': 'Not logged in'}, 401
+    
+    try:
+        data = request.get_json()
+        logger.info(f"Saving translation for user_id: {user_id}, data: {data}")
+        
+        translation_record = {
+            'user_id': str(user_id),
+            'timestamp': data.get('timestamp', _import_('datetime').datetime.utcnow().isoformat()),
+            'sourceLang': data.get('sourceLang'),
+            'targetLang': data.get('targetLang'),
+            'original': data.get('original'),
+            'translated': data.get('translated')
+        }
+        
+        logger.info(f"Translation record to insert: {translation_record}")
+        result = mongo.db.translation_history.insert_one(translation_record)
+        logger.info(f"Translation saved with ID: {result.inserted_id}")
+        
+        return {'success': True, 'id': str(result.inserted_id)}, 201
+    except Exception as e:
+        logger.error(f"Error saving translation: {e}", exc_info=True)
+        return {'error': str(e)}, 500
 
 @app.route('/')
 def index():
