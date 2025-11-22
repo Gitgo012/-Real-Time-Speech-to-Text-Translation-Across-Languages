@@ -113,14 +113,27 @@ pipeline {
             }
             steps {
                 echo "🚀 Deploying application..."
+                
+                withCredentials([
+                    string(credentialsId: 'FLASK_SECRET_KEY', variable: 'FLASK_SECRET'),
+                    string(credentialsId: 'GOOGLE_CLIENT_ID', variable: 'GOOGLE_ID'),
+                    string(credentialsId: 'GOOGLE_CLIENT_SECRET', variable: 'GOOGLE_SECRET')
+                ]) {
+                    bat """
+                        (
+                            echo FLASK_SECRET_KEY=%FLASK_SECRET%
+                            echo MONGO_URI=mongodb://host.docker.internal:27017/realtimeASR
+                            echo GOOGLE_CLIENT_ID=%GOOGLE_ID%
+                            echo GOOGLE_CLIENT_SECRET=%GOOGLE_SECRET%
+                        ) > .env
 
-                bat """
-                    echo Stopping running containers...
-                    docker-compose down || echo No containers to stop
+                        echo Stopping running containers...
+                        docker-compose down || echo No containers to stop
 
-                    echo Starting new deployment...
-                    docker-compose up -d --build || exit /b 0
-                """
+                        echo Starting new deployment...
+                        docker-compose up -d --build || exit /b 0
+                    """
+                }
 
                 echo "🎯 Deployment completed!"
             }
