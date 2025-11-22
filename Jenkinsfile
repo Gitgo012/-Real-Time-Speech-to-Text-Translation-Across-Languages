@@ -7,6 +7,7 @@ pipeline {
         DOCKER_REGISTRY = 'localhost:5000'
         GIT_REPO = 'https://github.com/Gitgo012/Real-Time-Speech-to-Text-Translation-Across-Languages.git'
         BRANCH_NAME = "${env.GIT_BRANCH ?: 'feature/containerization'}"
+        GIT_EXE = "C:\\\\Program Files\\\\Git\\\\bin\\\\git.exe"
     }
 
     options {
@@ -19,9 +20,9 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                echo "🔄 Checking out code from ${GIT_REPO}"
+                echo "🔄 Checking out code"
                 checkout scm
-                bat 'git log --oneline -5'
+                bat '"%GIT_EXE%" log --oneline -5'
             }
         }
 
@@ -29,11 +30,8 @@ pipeline {
             steps {
                 echo "📋 Setting up Python and Node environments"
                 bat """
-                    echo Python version:
                     python --version
-                    echo Node version:
                     node --version
-                    echo npm version:
                     npm --version
                 """
             }
@@ -41,11 +39,10 @@ pipeline {
 
         stage('Backend - Install Dependencies') {
             steps {
-                echo "📦 Installing Python dependencies"
                 bat """
                     python -m venv venv
                     call venv\\Scripts\\activate
-                    python -m pip install --upgrade pip
+                    pip install --upgrade pip
                     pip install -r requirements.txt
                     pip install pytest pytest-cov pytest-flask python-dotenv
                 """
@@ -54,7 +51,6 @@ pipeline {
 
         stage('Frontend - Install Dependencies') {
             steps {
-                echo "📦 Installing Node dependencies"
                 bat """
                     cd frontend
                     npm install
@@ -65,21 +61,17 @@ pipeline {
 
         stage('Backend - Lint & Format Check') {
             steps {
-                echo "🔍 Running Python linting"
                 bat """
                     call venv\\Scripts\\activate
                     pip install pylint flake8 black
-                    echo Running flake8...
-                    flake8 app.py || echo Flake8 completed with warnings
-                    echo Checking formatting with black...
-                    black --check app.py || echo Black reported formatting differences
+                    flake8 app.py || echo Flake8 warnings
+                    black --check app.py || echo Black formatting issues
                 """
             }
         }
 
         stage('Frontend - Lint') {
             steps {
-                echo "🔍 Running JavaScript linting"
                 bat """
                     cd frontend
                     npm run lint || echo No lint script defined
@@ -89,41 +81,37 @@ pipeline {
 
         stage('Backend - Unit Tests') {
             steps {
-                echo "🧪 Running Python unit tests"
                 bat """
                     call venv\\Scripts\\activate
-                    pytest tests/ -v --tb=short --cov=. --cov-report=html --cov-report=xml || echo Tests completed with warnings
+                    pytest tests/ -v --cov=. --cov-report=html --cov-report=xml || echo Tests failed
                 """
             }
         }
 
         stage('Frontend - Unit Tests') {
             steps {
-                echo "🧪 Running JavaScript unit tests"
                 bat """
                     cd frontend
-                    npm test || echo No test script defined
+                    npm test || echo No frontend tests defined
                 """
             }
         }
 
         stage('Security Scan - Dependencies') {
             steps {
-                echo "🔐 Scanning for vulnerable dependencies"
                 bat """
                     call venv\\Scripts\\activate
                     pip install safety
-                    safety check || echo Safety scan warnings
+                    safety check || echo Safety issues
 
                     cd frontend
-                    npm audit --audit-level=moderate || echo npm audit warnings
+                    npm audit --audit-level=moderate || echo JS vulnerabilities
                 """
             }
         }
 
         stage('Build - Backend Docker Image') {
             steps {
-                echo "🐳 Building backend Docker image"
                 bat """
                     docker build -f Dockerfile.backend -t localhost:5000/realtime-asr-backend:${BUILD_NUMBER} .
                     docker tag localhost:5000/realtime-asr-backend:${BUILD_NUMBER} localhost:5000/realtime-asr-backend:latest
@@ -133,7 +121,6 @@ pipeline {
 
         stage('Build - Frontend') {
             steps {
-                echo "🏗️ Building frontend with Vite"
                 bat """
                     cd frontend
                     npm run build
@@ -143,25 +130,21 @@ pipeline {
 
         stage('Docker Compose Validation') {
             steps {
-                echo "✅ Validating docker-compose.yml"
                 bat "docker-compose config"
             }
         }
 
         stage('Archive Reports') {
             steps {
-                echo "📊 Archiving test and coverage reports"
                 bat """
-                    if exist htmlcov (
-                        powershell -Command "Compress-Archive -Path htmlcov -DestinationPath python-coverage.zip -Force"
-                    )
+                    if exist htmlcov powershell -Command "Compress-Archive -Path htmlcov -DestinationPath python-coverage.zip -Force"
                     if exist coverage.xml copy coverage.xml python-coverage.xml
                 """
 
                 junit allowEmptyResults: true, testResults: '**/test-results.xml'
 
                 publishHTML([
-                    allowMissing: false,
+                    allowMissing: true,
                     alwaysLinkToLastBuild: true,
                     keepAll: true,
                     reportDir: 'htmlcov',
@@ -173,40 +156,23 @@ pipeline {
     }
 
     post {
+
         always {
-            echo "🧹 Cleaning up workspace"
+            echo "🧹 Cleaning workspace"
             bat """
                 if exist venv rmdir /s /q venv
-                docker rmi localhost:5000/realtime-asr-backend:${BUILD_NUMBER} 2>nul || echo Docker cleanup failed
+
+                docker rmi localhost:5000/realtime-asr-backend:%BUILD_NUMBER%
+                exit /b 0
             """
         }
 
         success {
-            echo "✅ Pipeline executed successfully!"
-            bat """
-                echo =========================================
-                echo Build #${BUILD_NUMBER} PASSED
-                echo =========================================
-                echo Branch: ${BRANCH_NAME}
-                echo Timestamp:
-                echo =========================================
-            """
+            echo "🎉 Build Success"
         }
 
         failure {
-            echo "❌ Pipeline failed!"
-            bat """
-                echo =========================================
-                echo Build #${BUILD_NUMBER} FAILED
-                echo =========================================
-                echo Branch: ${BRANCH_NAME}
-                echo Check logs above for details
-                echo =========================================
-            """
-        }
-
-        unstable {
-            echo "⚠️ Pipeline is unstable (tests failed but build succeeded)"
+            echo "❌ Build Failed"
         }
     }
 }
