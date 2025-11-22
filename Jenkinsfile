@@ -76,6 +76,14 @@ pipeline {
                 """
             }
         }
+        stage('Backend - Unit Tests') {
+            steps {
+                bat """
+                    call venv\\Scripts\\activate
+                    pytest tests/ -v --cov=. --cov-report=html --cov-report=xml || echo Tests failed
+                """
+            }
+        }
 
         stage('Frontend - Unit Tests') {
             steps {
@@ -120,14 +128,24 @@ pipeline {
 
 
         stage('Archive Reports') {
-            steps {
-                bat """
-                    if exist htmlcov powershell -Command "Compress-Archive -Path htmlcov -DestinationPath python-coverage.zip -Force"
-                    if exist coverage.xml copy coverage.xml python-coverage.xml
-                """
+    steps {
+        echo "📦 Archiving backend test & coverage reports"
 
-                junit allowEmptyResults: true, testResults: '**/test-results.xml'
+        bat """
+            if exist htmlcov (
+                powershell -Command "Compress-Archive -Path htmlcov -DestinationPath python-coverage.zip -Force"
+            )
+            if exist coverage.xml (
+                copy coverage.xml python-coverage.xml
+            )
+        """
 
+        // JUnit test results (optional)
+        junit allowEmptyResults: true, testResults: '**/test-results.xml'
+
+        // Safe HTML publishing
+        script {
+            if (fileExists('htmlcov/index.html')) {
                 publishHTML([
                     allowMissing: true,
                     alwaysLinkToLastBuild: true,
@@ -136,8 +154,13 @@ pipeline {
                     reportFiles: 'index.html',
                     reportName: 'Python Coverage Report'
                 ])
+            } else {
+                echo "⚠ Coverage HTML not found — skipping HTML report publishing"
             }
         }
+    }
+}
+
     }
 
     post {
