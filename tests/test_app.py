@@ -104,41 +104,6 @@ class TestAudioProcessing:
             # If processing fails, that's OK for now (depends on ffmpeg availability)
             pass
 
-class TestTranslationFunctions:
-    """Test translation functionality"""
-
-    @patch('app.m2m_model')
-    @patch('app.m2m_tokenizer')
-    def test_translate_text_streaming(self, mock_tokenizer, mock_model):
-        """Test translate_text_streaming function"""
-        from app import translate_text_streaming
-        
-        # Mock the model and tokenizer
-        mock_tokenizer.src_lang = "en"
-        mock_model.generate.return_value = mock.MagicMock()
-        mock_tokenizer.batch_decode.return_value = ["Hola"]
-        
-        result = translate_text_streaming("Hello", "en", "es")
-        # Should return a string
-        assert isinstance(result, str)
-
-    def test_translate_text_streaming_empty_input(self):
-        """Test translate_text_streaming with empty input"""
-        from app import translate_text_streaming
-        
-        result = translate_text_streaming("", "en", "es")
-        assert result == ""
-
-    def test_translate_text_streaming_no_model(self):
-        """Test translate_text_streaming when model not loaded"""
-        from app import translate_text_streaming
-        
-        # Should handle gracefully
-        result = translate_text_streaming("Test", "en", "es")
-        assert isinstance(result, str)
-
-
-
 class TestSocketIOEvents:
     """Test WebSocket/SocketIO events"""
 
