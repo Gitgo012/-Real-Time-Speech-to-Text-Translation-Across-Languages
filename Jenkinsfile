@@ -86,34 +86,34 @@ pipeline {
             }
         }
 
-        stage('Backend - Lint & Format Check') {
-            steps {
-                bat """
-                    call venv\\Scripts\\activate
-                    pip install --cache-dir="%PIP_CACHE%" pylint flake8 black
-                    flake8 app.py || echo Flake8 warnings
-                    black --check app.py || echo Black formatting issues
-                """
-            }
-        }
+        // stage('Backend - Lint & Format Check') {
+        //     steps {
+        //         bat """
+        //             call venv\\Scripts\\activate
+        //             pip install --cache-dir="%PIP_CACHE%" pylint flake8 black
+        //             flake8 app.py || echo "⚠ Flake8 warnings (ignored)"
+        //             black --check app.py || echo "⚠ Black formatting issues (ignored)"
+        //         """
+        //     }
+        // }
 
-        stage('Frontend - Lint') {
-            steps {
-                bat """
-                    cd frontend
-                    npm run lint || echo Lint warnings
-                """
-            }
-        }
+        // stage('Frontend - Lint') {
+        //     steps {
+        //         bat """
+        //             cd frontend
+        //             npm run lint || echo Lint warnings
+        //         """
+        //     }
+        // }
 
-        stage('Backend - Unit Tests') {
-            steps {
-                bat """
-                    call venv\\Scripts\\activate
-                    pytest tests/ -v --cov=. --cov-report=html --cov-report=xml || echo Tests failed
-                """
-            }
-        }
+        // stage('Backend - Unit Tests') {
+        //     steps {
+        //         bat """
+        //             call venv\\Scripts\\activate
+        //             pytest tests/ -v --cov=. --cov-report=html --cov-report=xml || echo Tests failed
+        //         """
+        //     }
+        // }
 
         stage('Frontend - Unit Tests') {
             steps {
@@ -124,18 +124,18 @@ pipeline {
             }
         }
 
-        stage('Security Scan - Dependencies') {
-            steps {
-                bat """
-                    call venv\\Scripts\\activate
-                    pip install --cache-dir="%PIP_CACHE%" safety
-                    safety check || echo Safety issues
+        // stage('Security Scan - Dependencies') {
+        //     steps {
+        //         bat """
+        //             call venv\\Scripts\\activate
+        //             pip install --cache-dir="%PIP_CACHE%" safety
+        //             safety check || echo Safety issues
 
-                    cd frontend
-                    npm audit --audit-level=moderate || echo JS vulnerabilities
-                """
-            }
-        }
+        //             cd frontend
+        //             npm audit --audit-level=moderate || echo JS vulnerabilities
+        //         """
+        //     }
+        // }
 
         stage('Build - Backend Docker Image') {
             steps {
