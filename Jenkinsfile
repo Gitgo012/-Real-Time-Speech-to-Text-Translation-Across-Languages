@@ -139,6 +139,25 @@ pipeline {
                 copy coverage.xml python-coverage.xml
             )
         """
+        stage('Deploy (Local Docker Compose)') {
+    when {
+        expression { currentBuild.currentResult == 'SUCCESS' }
+    }
+    steps {
+        echo "🚀 Deploying updated backend & frontend using docker-compose..."
+
+        bat """
+            echo Stopping any running containers...
+            docker-compose down || echo No containers to stop
+
+            echo Starting deployment...
+            docker-compose up -d --build
+        """
+
+        echo "🎯 Deployment completed successfully!"
+    }
+}
+
 
         // JUnit test results (optional)
         junit allowEmptyResults: true, testResults: '**/test-results.xml'
