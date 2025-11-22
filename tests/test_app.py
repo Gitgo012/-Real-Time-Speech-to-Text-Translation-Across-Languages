@@ -5,7 +5,7 @@ import pytest
 import json
 import base64
 from unittest.mock import Mock, patch, MagicMock
-from app import app, socketio, streaming_buffers, CHUNK_SIZE
+from app import app, socketio
 
 
 @pytest.fixture
