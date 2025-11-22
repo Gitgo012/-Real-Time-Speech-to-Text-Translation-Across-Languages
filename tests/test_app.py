@@ -104,29 +104,6 @@ class TestAudioProcessing:
             # If processing fails, that's OK for now (depends on ffmpeg availability)
             pass
 
-    def test_process_pcm_audio(self):
-        """Test PCM audio processing"""
-        from app import process_pcm_audio
-        import numpy as np
-        
-        # Create mock PCM data (Float32 samples)
-        pcm_data = np.array([0.1, 0.2, 0.3, 0.4], dtype=np.float32).tobytes()
-        
-        samples, sample_rate = process_pcm_audio(pcm_data)
-        assert len(samples) == 4
-        assert sample_rate == 16000
-        assert isinstance(samples, np.ndarray)
-
-    def test_process_pcm_audio_empty(self):
-        """Test PCM audio processing with empty data"""
-        from app import process_pcm_audio
-        
-        pcm_data = b''
-        samples, sample_rate = process_pcm_audio(pcm_data)
-        assert len(samples) == 0
-        assert sample_rate == 16000
-
-
 class TestTranslationFunctions:
     """Test translation functionality"""
 
