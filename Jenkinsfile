@@ -67,78 +67,30 @@ pipeline {
             }
         }
 
-        stage('Frontend - Install Dependencies (Cached)') {
+        stage('Frontend - Configure Cache') {
             steps {
-                echo "📦 Installing Node dependencies with caching"
+                echo "📦 Setting npm global cache"
                 bat """
                     cd frontend
-
                     npm config set cache "%NPM_CACHE%"
-
-                    if not exist node_modules (
-                        echo Installing fresh node modules...
-                        npm install
-                    ) else (
-                        echo Using cached node_modules...
-                        npm install --prefer-offline --no-audit --no-fund
-                    )
                 """
             }
         }
 
-        // stage('Backend - Lint & Format Check') {
-        //     steps {
-        //         bat """
-        //             call venv\\Scripts\\activate
-        //             pip install --cache-dir="%PIP_CACHE%" pylint flake8 black
-        //             flake8 app.py || echo "⚠ Flake8 warnings (ignored)"
-        //             black --check app.py || echo "⚠ Black formatting issues (ignored)"
-        //         """
-        //     }
-        // }
-
-        // stage('Frontend - Lint') {
-        //     steps {
-        //         bat """
-        //             cd frontend
-        //             npm run lint || echo Lint warnings
-        //         """
-        //     }
-        // }
-
-        // stage('Backend - Unit Tests') {
-        //     steps {
-        //         bat """
-        //             call venv\\Scripts\\activate
-        //             pytest tests/ -v --cov=. --cov-report=html --cov-report=xml || echo Tests failed
-        //         """
-        //     }
-        // }
-
         stage('Frontend - Unit Tests') {
             steps {
+                echo "🧪 Running frontend unit tests"
                 bat """
                     cd frontend
+                    npm install --prefer-offline --no-audit --no-fund
                     npm test || echo No frontend tests defined
                 """
             }
         }
 
-        // stage('Security Scan - Dependencies') {
-        //     steps {
-        //         bat """
-        //             call venv\\Scripts\\activate
-        //             pip install --cache-dir="%PIP_CACHE%" safety
-        //             safety check || echo Safety issues
-
-        //             cd frontend
-        //             npm audit --audit-level=moderate || echo JS vulnerabilities
-        //         """
-        //     }
-        // }
-
         stage('Build - Backend Docker Image') {
             steps {
+                echo "🐳 Building backend Docker image"
                 bat """
                     docker build -f Dockerfile.backend -t localhost:5000/realtime-asr-backend:${BUILD_NUMBER} .
                     docker tag localhost:5000/realtime-asr-backend:${BUILD_NUMBER} localhost:5000/realtime-asr-backend:latest
@@ -148,6 +100,7 @@ pipeline {
 
         stage('Build - Frontend') {
             steps {
+                echo "🌐 Building frontend"
                 bat """
                     cd frontend
                     npm run build
@@ -157,6 +110,7 @@ pipeline {
 
         stage('Docker Compose Validation') {
             steps {
+                echo "🔎 Validating docker-compose file"
                 bat "docker-compose config"
             }
         }
