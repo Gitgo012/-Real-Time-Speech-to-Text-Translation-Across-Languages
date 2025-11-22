@@ -10,168 +10,156 @@ pipeline {
     }
 
     options {
-        // Keep only last 10 builds
         buildDiscarder(logRotator(numToKeepStr: '10'))
-        // Add timestamps to console output
         timestamps()
-        // Timeout after 30 minutes
         timeout(time: 30, unit: 'MINUTES')
     }
 
     stages {
+
         stage('Checkout') {
             steps {
                 echo "🔄 Checking out code from ${GIT_REPO}"
                 checkout scm
-                sh 'git log --oneline -5'
+                bat 'git log --oneline -5'
             }
         }
 
         stage('Environment Setup') {
             steps {
                 echo "📋 Setting up Python and Node environments"
-                sh '''
-                    echo "Python version:"
-                    python3 --version
-                    echo "Node version:"
+                bat """
+                    echo Python version:
+                    python --version
+                    echo Node version:
                     node --version
-                    echo "npm version:"
+                    echo npm version:
                     npm --version
-                '''
+                """
             }
         }
 
         stage('Backend - Install Dependencies') {
             steps {
                 echo "📦 Installing Python dependencies"
-                sh '''
-                    python3 -m venv venv || true
-                    . venv/bin/activate || source venv/Scripts/activate || true
-                    pip install --upgrade pip
+                bat """
+                    python -m venv venv
+                    call venv\\Scripts\\activate
+                    python -m pip install --upgrade pip
                     pip install -r requirements.txt
                     pip install pytest pytest-cov pytest-flask python-dotenv
-                '''
+                """
             }
         }
 
         stage('Frontend - Install Dependencies') {
             steps {
                 echo "📦 Installing Node dependencies"
-                sh '''
+                bat """
                     cd frontend
                     npm install
                     npm install --save-dev vitest @testing-library/react @testing-library/jest-dom
-                    cd ..
-                '''
+                """
             }
         }
 
         stage('Backend - Lint & Format Check') {
             steps {
                 echo "🔍 Running Python linting"
-                sh '''
-                    . venv/bin/activate || source venv/Scripts/activate || true
+                bat """
+                    call venv\\Scripts\\activate
                     pip install pylint flake8 black
-                    echo "Running flake8..."
-                    flake8 app.py --count --select=E9,F63,F7,F82 --show-source --statistics || true
-                    echo "Checking code formatting with black..."
-                    black --check app.py || true
-                '''
+                    echo Running flake8...
+                    flake8 app.py || echo Flake8 completed with warnings
+                    echo Checking formatting with black...
+                    black --check app.py || echo Black reported formatting differences
+                """
             }
         }
 
         stage('Frontend - Lint') {
             steps {
                 echo "🔍 Running JavaScript linting"
-                sh '''
+                bat """
                     cd frontend
-                    npm run lint 2>/dev/null || echo "No lint script defined"
-                    cd ..
-                '''
+                    npm run lint || echo No lint script defined
+                """
             }
         }
 
         stage('Backend - Unit Tests') {
             steps {
                 echo "🧪 Running Python unit tests"
-                sh '''
-                    . venv/bin/activate || source venv/Scripts/activate || true
-                    pytest tests/ -v --tb=short --cov=. --cov-report=html --cov-report=xml || true
-                    echo "Coverage report generated"
-                '''
+                bat """
+                    call venv\\Scripts\\activate
+                    pytest tests/ -v --tb=short --cov=. --cov-report=html --cov-report=xml || echo Tests completed with warnings
+                """
             }
         }
 
         stage('Frontend - Unit Tests') {
             steps {
                 echo "🧪 Running JavaScript unit tests"
-                sh '''
+                bat """
                     cd frontend
-                    npm run test 2>/dev/null || echo "No test script defined"
-                    cd ..
-                '''
+                    npm test || echo No test script defined
+                """
             }
         }
 
         stage('Security Scan - Dependencies') {
             steps {
                 echo "🔐 Scanning for vulnerable dependencies"
-                sh '''
-                    . venv/bin/activate || source venv/Scripts/activate || true
+                bat """
+                    call venv\\Scripts\\activate
                     pip install safety
-                    safety check --json || true
-                    
+                    safety check || echo Safety scan warnings
+
                     cd frontend
-                    npm audit --audit-level=moderate || true
-                    cd ..
-                '''
+                    npm audit --audit-level=moderate || echo npm audit warnings
+                """
             }
         }
 
         stage('Build - Backend Docker Image') {
             steps {
                 echo "🐳 Building backend Docker image"
-                sh '''
+                bat """
                     docker build -f Dockerfile.backend -t localhost:5000/realtime-asr-backend:${BUILD_NUMBER} .
                     docker tag localhost:5000/realtime-asr-backend:${BUILD_NUMBER} localhost:5000/realtime-asr-backend:latest
-                '''
+                """
             }
         }
 
         stage('Build - Frontend') {
             steps {
                 echo "🏗️ Building frontend with Vite"
-                sh '''
+                bat """
                     cd frontend
                     npm run build
-                    cd ..
-                '''
+                """
             }
         }
 
         stage('Docker Compose Validation') {
             steps {
                 echo "✅ Validating docker-compose.yml"
-                sh 'docker-compose config'
+                bat "docker-compose config"
             }
         }
 
         stage('Archive Reports') {
             steps {
                 echo "📊 Archiving test and coverage reports"
-                sh '''
-                    # Archive Python coverage
-                    if [ -d htmlcov ]; then
-                        tar -czf python-coverage.tar.gz htmlcov/
-                    fi
-                    
-                    # Archive test results
-                    if [ -f coverage.xml ]; then
-                        cp coverage.xml python-coverage.xml
-                    fi
-                '''
-                
+                bat """
+                    if exist htmlcov (
+                        powershell -Command "Compress-Archive -Path htmlcov -DestinationPath python-coverage.zip -Force"
+                    )
+                    if exist coverage.xml copy coverage.xml python-coverage.xml
+                """
+
                 junit allowEmptyResults: true, testResults: '**/test-results.xml'
+
                 publishHTML([
                     allowMissing: false,
                     alwaysLinkToLastBuild: true,
@@ -187,40 +175,34 @@ pipeline {
     post {
         always {
             echo "🧹 Cleaning up workspace"
-            sh '''
-                # Remove virtual environments
-                rm -rf venv/ || true
-                
-                # Clean Docker artifacts
-                docker rmi localhost:5000/realtime-asr-backend:${BUILD_NUMBER} 2>/dev/null || true
-            '''
-            
-            // Archive logs
-            sh 'echo "Build logs:" && tail -100 /var/log/syslog 2>/dev/null || echo "No syslog available"'
+            bat """
+                if exist venv rmdir /s /q venv
+                docker rmi localhost:5000/realtime-asr-backend:${BUILD_NUMBER} 2>nul || echo Docker cleanup failed
+            """
         }
 
         success {
             echo "✅ Pipeline executed successfully!"
-            sh '''
-                echo "========================================="
-                echo "Build #${BUILD_NUMBER} PASSED"
-                echo "========================================="
-                echo "Branch: ${BRANCH_NAME}"
-                echo "Timestamp: $(date)"
-                echo "========================================="
-            '''
+            bat """
+                echo =========================================
+                echo Build #${BUILD_NUMBER} PASSED
+                echo =========================================
+                echo Branch: ${BRANCH_NAME}
+                echo Timestamp:
+                echo =========================================
+            """
         }
 
         failure {
             echo "❌ Pipeline failed!"
-            sh '''
-                echo "========================================="
-                echo "Build #${BUILD_NUMBER} FAILED"
-                echo "========================================="
-                echo "Branch: ${BRANCH_NAME}"
-                echo "Check logs above for details"
-                echo "========================================="
-            '''
+            bat """
+                echo =========================================
+                echo Build #${BUILD_NUMBER} FAILED
+                echo =========================================
+                echo Branch: ${BRANCH_NAME}
+                echo Check logs above for details
+                echo =========================================
+            """
         }
 
         unstable {
