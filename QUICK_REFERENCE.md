@@ -3,12 +3,14 @@
 ## 🚀 Quick Start (2 minutes)
 
 ### Windows
+
 ```powershell
 .\setup-jenkins.bat
 # Then go to http://localhost:8090 and create pipeline job
 ```
 
 ### Linux/Mac
+
 ```bash
 ./setup-jenkins.sh
 # Then go to http://localhost:8090 and create pipeline job
@@ -28,6 +30,7 @@
 ## 🧪 Run Tests Locally
 
 ### Backend
+
 ```bash
 pytest tests/ -v                              # Run all tests
 pytest tests/ --cov=. --cov-report=html      # With coverage
@@ -35,6 +38,7 @@ pytest tests/test_app.py::TestHealthEndpoint -v  # Specific class
 ```
 
 ### Frontend
+
 ```bash
 cd frontend
 npm run test                                  # Run tests
@@ -73,15 +77,15 @@ rm -rf .pytest_cache htmlcov coverage.xml
 
 ## 📁 Key Files
 
-| File | Purpose |
-|------|---------|
-| `Jenkinsfile` | Pipeline stages and configuration |
-| `tests/test_app.py` | Backend unit tests (40+ tests) |
-| `frontend/src/pages/Dashboard.test.jsx` | React component tests |
-| `pytest.ini` | Python test config |
-| `frontend/vitest.config.js` | JavaScript test config |
-| `JENKINS_SETUP.md` | Detailed setup guide |
-| `TESTING_README.md` | Testing documentation |
+| File                                    | Purpose                           |
+| --------------------------------------- | --------------------------------- |
+| `Jenkinsfile`                           | Pipeline stages and configuration |
+| `tests/test_app.py`                     | Backend unit tests (40+ tests)    |
+| `frontend/src/pages/Dashboard.test.jsx` | React component tests             |
+| `pytest.ini`                            | Python test config                |
+| `frontend/vitest.config.js`             | JavaScript test config            |
+| `JENKINS_SETUP.md`                      | Detailed setup guide              |
+| `TESTING_README.md`                     | Testing documentation             |
 
 ## ⚡ Pipeline Stages
 
@@ -100,17 +104,18 @@ rm -rf .pytest_cache htmlcov coverage.xml
 
 ## 🐛 Quick Fixes
 
-| Issue | Solution |
-|-------|----------|
-| Jenkins won't start | `services.msc` → Find Jenkins → Start |
+| Issue                    | Solution                                            |
+| ------------------------ | --------------------------------------------------- |
+| Jenkins won't start      | `services.msc` → Find Jenkins → Start               |
 | Tests fail - ImportError | `pip install --force-reinstall -r requirements.txt` |
-| Docker build fails | `sudo usermod -aG docker jenkins` |
-| No coverage | `pip install pytest-cov` |
-| Node modules issue | `cd frontend && npm install` |
+| Docker build fails       | `sudo usermod -aG docker jenkins`                   |
+| No coverage              | `pip install pytest-cov`                            |
+| Node modules issue       | `cd frontend && npm install`                        |
 
 ## 📈 What Gets Tested
 
 ### Backend (40+ tests)
+
 - ✅ REST API endpoints (health, session, history)
 - ✅ Audio processing (PCM, WebM)
 - ✅ Translation functions
@@ -121,6 +126,7 @@ rm -rf .pytest_cache htmlcov coverage.xml
 - ✅ Model loading
 
 ### Frontend (9 tests)
+
 - ✅ Component rendering
 - ✅ Recording controls
 - ✅ Mode toggle

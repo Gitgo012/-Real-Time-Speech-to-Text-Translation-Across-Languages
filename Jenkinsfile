@@ -5,9 +5,11 @@ pipeline {
         PYTHON_VERSION = '3.10'
         NODE_VERSION = '18'
         DOCKER_REGISTRY = 'localhost:5000'
-        GIT_REPO = 'https://github.com/Gitgo012/Real-Time-Speech-to-Text-Translation-Across-Languages.git'
-        BRANCH_NAME = "${env.GIT_BRANCH ?: 'feature/containerization'}"
-        GIT_EXE = "C:\\\\Program Files\\\\Git\\\\bin\\\\git.exe"
+        GIT_EXE = "C:\\Program Files\\Git\\bin\\git.exe"
+
+        // Global dependency caches
+        PIP_CACHE = "C:\\ProgramData\\Jenkins\\pip-cache"
+        NPM_CACHE = "C:\\ProgramData\\Jenkins\\npm-cache"
     }
 
     options {
@@ -17,6 +19,16 @@ pipeline {
     }
 
     stages {
+
+        stage('Prepare Caches') {
+            steps {
+                echo "🗂 Creating global cache directories if missing"
+                bat """
+                    if not exist "%PIP_CACHE%" mkdir "%PIP_CACHE%"
+                    if not exist "%NPM_CACHE%" mkdir "%NPM_CACHE%"
+                """
+            }
+        }
 
         stage('Checkout') {
             steps {
@@ -28,7 +40,7 @@ pipeline {
 
         stage('Environment Setup') {
             steps {
-                echo "📋 Setting up Python and Node environments"
+                echo "📋 Checking Python and Node"
                 bat """
                     python --version
                     node --version
@@ -37,24 +49,39 @@ pipeline {
             }
         }
 
-        stage('Backend - Install Dependencies') {
+        stage('Backend - Install Dependencies (Cached)') {
             steps {
+                echo "🐍 Setting up Python virtual environment with caching"
                 bat """
-                    python -m venv venv
+                    if not exist venv (
+                        echo Creating new Python venv...
+                        python -m venv venv
+                    )
+
                     call venv\\Scripts\\activate
-                    pip install --upgrade pip
-                    pip install -r requirements.txt
-                    pip install pytest pytest-cov pytest-flask python-dotenv
+
+                    pip install --cache-dir="%PIP_CACHE%" --upgrade pip
+                    pip install --cache-dir="%PIP_CACHE%" -r requirements.txt
+                    pip install --cache-dir="%PIP_CACHE%" pytest pytest-cov pytest-flask python-dotenv
                 """
             }
         }
 
-        stage('Frontend - Install Dependencies') {
+        stage('Frontend - Install Dependencies (Cached)') {
             steps {
+                echo "📦 Installing Node dependencies with caching"
                 bat """
                     cd frontend
-                    npm install
-                    npm install --save-dev vitest @testing-library/react @testing-library/jest-dom
+
+                    npm config set cache "%NPM_CACHE%"
+
+                    if not exist node_modules (
+                        echo Installing fresh node modules...
+                        npm install
+                    ) else (
+                        echo Using cached node_modules...
+                        npm install --prefer-offline --no-audit --no-fund
+                    )
                 """
             }
         }
@@ -63,7 +90,7 @@ pipeline {
             steps {
                 bat """
                     call venv\\Scripts\\activate
-                    pip install pylint flake8 black
+                    pip install --cache-dir="%PIP_CACHE%" pylint flake8 black
                     flake8 app.py || echo Flake8 warnings
                     black --check app.py || echo Black formatting issues
                 """
@@ -74,7 +101,7 @@ pipeline {
             steps {
                 bat """
                     cd frontend
-                    npm run lint || echo No lint script defined
+                    npm run lint || echo Lint warnings
                 """
             }
         }
@@ -101,7 +128,7 @@ pipeline {
             steps {
                 bat """
                     call venv\\Scripts\\activate
-                    pip install safety
+                    pip install --cache-dir="%PIP_CACHE%" safety
                     safety check || echo Safety issues
 
                     cd frontend
@@ -156,13 +183,10 @@ pipeline {
     }
 
     post {
-
         always {
-            echo "🧹 Cleaning workspace"
+            echo "🧹 Cleaning temporary files (but keeping caches & venv)"
             bat """
-                if exist venv rmdir /s /q venv
-
-                docker rmi localhost:5000/realtime-asr-backend:%BUILD_NUMBER%
+                rem Do NOT delete venv or node_modules — they are cached!!
                 exit /b 0
             """
         }

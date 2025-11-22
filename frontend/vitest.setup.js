@@ -1,12 +1,12 @@
 /**
  * Vitest setup file
  */
-import '@testing-library/jest-dom';
+import "@testing-library/jest-dom";
 
 // Mock window.matchMedia
-Object.defineProperty(window, 'matchMedia', {
+Object.defineProperty(window, "matchMedia", {
   writable: true,
-  value: vi.fn().mockImplementation(query => ({
+  value: vi.fn().mockImplementation((query) => ({
     matches: false,
     media: query,
     onchange: null,
@@ -19,7 +19,7 @@ Object.defineProperty(window, 'matchMedia', {
 });
 
 // Mock navigator.mediaDevices
-Object.defineProperty(navigator, 'mediaDevices', {
+Object.defineProperty(navigator, "mediaDevices", {
   value: {
     getUserMedia: vi.fn().mockResolvedValue({
       getTracks: () => [],

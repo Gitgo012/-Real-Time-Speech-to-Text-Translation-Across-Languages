@@ -9,11 +9,13 @@ I've created a **complete Jenkins CI/CD pipeline** with comprehensive **unit tes
 ## 📦 Files Created (15 files)
 
 ### Pipeline & Configuration
+
 1. **`Jenkinsfile`** - Main pipeline with 13 stages
 2. **`jenkins-casc.yaml`** - Jenkins Configuration as Code
 3. **`pytest.ini`** - Python test configuration
 
 ### Tests
+
 4. **`tests/test_app.py`** - 40+ backend unit tests
 5. **`tests/conftest.py`** - Pytest fixtures and configuration
 6. **`frontend/src/pages/Dashboard.test.jsx`** - React component tests
@@ -21,10 +23,12 @@ I've created a **complete Jenkins CI/CD pipeline** with comprehensive **unit tes
 8. **`frontend/vitest.setup.js`** - Test environment setup
 
 ### Setup Scripts
+
 9. **`setup-jenkins.bat`** - Automated setup for Windows
 10. **`setup-jenkins.sh`** - Automated setup for Linux/Mac
 
 ### Documentation
+
 11. **`JENKINS_SETUP.md`** - Comprehensive 300+ line setup guide
 12. **`TESTING_README.md`** - Testing documentation
 13. **`CI-CD_SUMMARY.md`** - Executive summary
@@ -32,6 +36,7 @@ I've created a **complete Jenkins CI/CD pipeline** with comprehensive **unit tes
 15. **`verify-setup.py`** - Verification script
 
 ### Modified Files
+
 - **`README.md`** - Added testing & Jenkins section
 - **`frontend/package.json`** - Added test scripts
 
@@ -42,18 +47,22 @@ I've created a **complete Jenkins CI/CD pipeline** with comprehensive **unit tes
 ### Step 1: Run Setup (Choose Your OS)
 
 **Windows:**
+
 ```powershell
 .\setup-jenkins.bat
 ```
 
 **Linux/Mac:**
+
 ```bash
 chmod +x setup-jenkins.sh
 ./setup-jenkins.sh
 ```
 
 ### Step 2: Create Jenkins Job
+
 Go to `http://localhost:8090`:
+
 1. Click **"New Item"**
 2. Name: `RealtimeASR-Pipeline`
 3. Type: **Pipeline**
@@ -64,6 +73,7 @@ Go to `http://localhost:8090`:
 8. **Save** and **Build Now**
 
 ### Step 3: Watch It Build
+
 Open: `http://localhost:8090/job/RealtimeASR-Pipeline/1/console`
 
 ---
@@ -71,9 +81,10 @@ Open: `http://localhost:8090/job/RealtimeASR-Pipeline/1/console`
 ## 🧪 What Gets Tested
 
 ### Backend (40+ Tests)
+
 ```
 ✅ Health endpoint checks
-✅ Session authentication  
+✅ Session authentication
 ✅ Translation history CRUD
 ✅ Audio processing (PCM + WebM)
 ✅ Translation functions
@@ -85,6 +96,7 @@ Open: `http://localhost:8090/job/RealtimeASR-Pipeline/1/console`
 ```
 
 ### Frontend (9 Tests)
+
 ```
 ✅ Component rendering
 ✅ Recording controls
@@ -95,6 +107,7 @@ Open: `http://localhost:8090/job/RealtimeASR-Pipeline/1/console`
 ```
 
 ### Security
+
 ```
 ✅ Python CVE scanning (safety)
 ✅ JavaScript vulnerability detection (npm audit)
@@ -125,18 +138,19 @@ Open: `http://localhost:8090/job/RealtimeASR-Pipeline/1/console`
 
 ## 📚 Documentation Files
 
-| File | Purpose | Read Time |
-|------|---------|-----------|
-| **QUICK_REFERENCE.md** | Fast commands & troubleshooting | 2 min |
-| **JENKINS_SETUP.md** | Detailed setup guide with examples | 10 min |
-| **TESTING_README.md** | Testing framework guide | 8 min |
-| **CI-CD_SUMMARY.md** | Complete technical overview | 5 min |
+| File                   | Purpose                            | Read Time |
+| ---------------------- | ---------------------------------- | --------- |
+| **QUICK_REFERENCE.md** | Fast commands & troubleshooting    | 2 min     |
+| **JENKINS_SETUP.md**   | Detailed setup guide with examples | 10 min    |
+| **TESTING_README.md**  | Testing framework guide            | 8 min     |
+| **CI-CD_SUMMARY.md**   | Complete technical overview        | 5 min     |
 
 ---
 
 ## 🔧 Running Tests Locally
 
 ### Backend
+
 ```bash
 # All tests with verbose output
 pytest tests/ -v
@@ -152,6 +166,7 @@ pytest tests/test_app.py::TestHealthEndpoint::test_health_endpoint -v
 ```
 
 ### Frontend
+
 ```bash
 cd frontend
 
@@ -177,25 +192,28 @@ npm run test:ui
 ✅ **Coverage Reports** - HTML reports with line-by-line coverage  
 ✅ **GitHub Integration** - Optional webhook auto-trigger  
 ✅ **Notifications** - Success/failure feedback  
-✅ **Documentation** - 4 detailed guides  
+✅ **Documentation** - 4 detailed guides
 
 ---
 
 ## 🐛 Troubleshooting
 
 ### "Jenkins not running"
+
 ```
 Windows: services.msc → Find Jenkins → Start
 Docker: docker run -p 8090:8080 jenkins/jenkins:latest
 ```
 
 ### "Tests fail with ImportError"
+
 ```bash
 pip install --force-reinstall -r requirements.txt
 cd frontend && npm install
 ```
 
 ### "Docker build fails"
+
 ```bash
 sudo usermod -aG docker jenkins
 sudo systemctl restart jenkins
@@ -208,16 +226,19 @@ See **JENKINS_SETUP.md** (Troubleshooting section) for more.
 ## 📈 What's Next?
 
 1. **Extend Testing**
+
    - Add integration tests
    - Add E2E tests with Playwright
    - Add performance benchmarks
 
 2. **Enhance Pipeline**
+
    - Add SonarQube for code quality
    - Add minimum coverage thresholds
    - Add deployment stages (dev → staging → prod)
 
 3. **Set Up Auto-Trigger**
+
    - GitHub webhook for push events
    - Automatic PR builds
    - Status checks on pull requests
@@ -231,21 +252,22 @@ See **JENKINS_SETUP.md** (Troubleshooting section) for more.
 
 ## 📞 Help & Resources
 
-| Need Help With | See File |
-|---|---|
-| Quick commands | QUICK_REFERENCE.md |
-| Setup issues | JENKINS_SETUP.md → Troubleshooting |
-| Running tests | TESTING_README.md |
-| Technical details | CI-CD_SUMMARY.md |
-| Jenkins docs | https://www.jenkins.io/doc/ |
-| Pytest docs | https://docs.pytest.org/ |
-| Vitest docs | https://vitest.dev/ |
+| Need Help With    | See File                           |
+| ----------------- | ---------------------------------- |
+| Quick commands    | QUICK_REFERENCE.md                 |
+| Setup issues      | JENKINS_SETUP.md → Troubleshooting |
+| Running tests     | TESTING_README.md                  |
+| Technical details | CI-CD_SUMMARY.md                   |
+| Jenkins docs      | https://www.jenkins.io/doc/        |
+| Pytest docs       | https://docs.pytest.org/           |
+| Vitest docs       | https://vitest.dev/                |
 
 ---
 
 ## ✨ Summary
 
 Your project now has:
+
 - ✅ **Jenkinsfile** - Production-ready CI/CD pipeline
 - ✅ **50+ Unit Tests** - Comprehensive test coverage
 - ✅ **Automated Setup** - One-command initialization
@@ -263,11 +285,13 @@ Your project now has:
 **Run this command now:**
 
 ### Windows
+
 ```powershell
 .\setup-jenkins.bat
 ```
 
 ### Linux/Mac
+
 ```bash
 chmod +x setup-jenkins.sh && ./setup-jenkins.sh
 ```
@@ -276,6 +300,6 @@ Then visit: **http://localhost:8090**
 
 ---
 
-*Setup created by: Your AI Assistant*  
-*Date: November 2025*  
-*Project: Real-Time Speech-to-Text Translation*
+_Setup created by: Your AI Assistant_  
+_Date: November 2025_  
+_Project: Real-Time Speech-to-Text Translation_

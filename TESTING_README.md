@@ -5,11 +5,13 @@ This directory contains comprehensive testing setup and Jenkins pipeline configu
 ## Quick Start
 
 ### Option 1: Windows
+
 ```powershell
 .\setup-jenkins.bat
 ```
 
 ### Option 2: Linux/Mac
+
 ```bash
 chmod +x setup-jenkins.sh
 ./setup-jenkins.sh
@@ -18,6 +20,7 @@ chmod +x setup-jenkins.sh
 ### Manual Setup
 
 #### Backend Tests
+
 ```bash
 # Create virtual environment
 python -m venv venv
@@ -33,6 +36,7 @@ pytest tests/ --cov=. --cov-report=html
 ```
 
 #### Frontend Tests
+
 ```bash
 cd frontend
 npm install
@@ -70,6 +74,7 @@ jenkins-casc.yaml               # Jenkins Configuration as Code
 ### Backend (Python)
 
 **Files Tested:**
+
 - `app.py` - Main Flask application
   - Health check endpoint
   - Session management
@@ -80,6 +85,7 @@ jenkins-casc.yaml               # Jenkins Configuration as Code
   - Error handling
 
 **Test Classes:**
+
 - `TestHealthEndpoint` - Health check functionality
 - `TestSessionCheck` - Authentication
 - `TestTranslationHistory` - History CRUD operations
@@ -92,6 +98,7 @@ jenkins-casc.yaml               # Jenkins Configuration as Code
 - `TestModelLoading` - Model initialization
 
 **Running Backend Tests:**
+
 ```bash
 # All tests
 pytest tests/test_app.py -v
@@ -118,6 +125,7 @@ pytest tests/test_app.py --lf
 ### Frontend (JavaScript/React)
 
 **Files Tested:**
+
 - `Dashboard.jsx` - Main dashboard component
   - Rendering
   - Recording functionality
@@ -127,6 +135,7 @@ pytest tests/test_app.py --lf
   - Event handling
 
 **Running Frontend Tests:**
+
 ```bash
 cd frontend
 
@@ -166,21 +175,27 @@ The `Jenkinsfile` contains the following stages:
 ## Configuration Files
 
 ### pytest.ini
+
 Configures pytest behavior:
+
 - Test discovery patterns
 - Output options
 - Custom markers (unit, integration, websocket, etc.)
 - Warnings handling
 
 ### vitest.config.js
+
 Configures Vitest (JavaScript test runner):
+
 - jsdom environment for React
 - Coverage providers and reporters
 - Module aliases
 - Setup files
 
 ### vitest.setup.js
+
 Test environment setup:
+
 - Testing Library imports
 - Window.matchMedia mock
 - MediaDevices API mock
@@ -231,23 +246,27 @@ services:
 After running tests:
 
 ### Backend Coverage
+
 ```
 htmlcov/index.html     # Open in browser for detailed coverage
 coverage.xml           # Machine-readable format
 ```
 
 ### Frontend Coverage
+
 ```
 frontend/coverage/     # Coverage directory
 ```
 
 ### Jenkins Reports
+
 - `http://localhost:8090/job/RealtimeASR-Pipeline/[BUILD]/HTML_Report/`
 - Console output at `[BUILD]/console`
 
 ## Troubleshooting
 
 ### Tests fail with "ModuleNotFoundError"
+
 ```bash
 # Reinstall dependencies
 pip install --force-reinstall -r requirements.txt
@@ -255,6 +274,7 @@ cd frontend && npm install && cd ..
 ```
 
 ### Jenkins can't find Python/Node
+
 ```bash
 # Check PATH in Jenkins
 # Go to Manage Jenkins → Configure System
@@ -262,6 +282,7 @@ cd frontend && npm install && cd ..
 ```
 
 ### Docker build fails
+
 ```bash
 # Ensure Jenkins user can access Docker
 sudo usermod -aG docker jenkins
@@ -269,10 +290,12 @@ sudo systemctl restart jenkins
 ```
 
 ### WebSocket tests fail
+
 - Ensure Socket.IO mocks are loaded in `vitest.setup.js`
 - Check that `socket.io-client` is properly mocked
 
 ### Coverage reports not generated
+
 ```bash
 # Ensure pytest and coverage installed
 pip install pytest-cov
@@ -284,6 +307,7 @@ pytest --cov=. --cov-report=html --cov-report=xml
 ## CI/CD Best Practices
 
 1. **Run tests before committing**
+
    ```bash
    git add .
    pytest tests/ && npm run test && git commit
@@ -291,17 +315,20 @@ pytest --cov=. --cov-report=html --cov-report=xml
 
 2. **Use pre-commit hooks**
    Create `.git/hooks/pre-commit`:
+
    ```bash
    #!/bin/bash
    pytest tests/ || exit 1
    ```
 
 3. **Monitor coverage**
+
    - Aim for >80% coverage
    - Review coverage reports regularly
    - Set minimum coverage thresholds in Jenkinsfile
 
 4. **Security scanning**
+
    ```bash
    pip install safety
    safety check
@@ -333,6 +360,7 @@ pytest --cov=. --cov-report=html --cov-report=xml
 ## Support
 
 For issues or questions:
+
 1. Check logs: `http://localhost:8090/job/RealtimeASR-Pipeline/[BUILD]/console`
 2. Review JENKINS_SETUP.md for detailed configuration
 3. Check test output for specific failures

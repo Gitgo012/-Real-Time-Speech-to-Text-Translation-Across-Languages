@@ -4,7 +4,7 @@
 
 jenkins:
   systemMessage: "Real-Time Speech-to-Text Translation CI/CD Pipeline"
-  
+
   securityRealm:
     local:
       allowsSignup: false
@@ -34,7 +34,7 @@ unclassified:
 
   gitHub:
     apiRateLimitChecker: ThrottleOnOver
-    
+
   ghprbTrigger:
     autoCloseFailedPullRequests: false
     useGitHubAppCredentials: false
