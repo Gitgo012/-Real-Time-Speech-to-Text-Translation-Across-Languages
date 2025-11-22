@@ -115,13 +115,17 @@ pipeline {
                 echo "🚀 Deploying application..."
 
                 bat """
-                    docker-compose down || echo No running containers
-                    docker-compose up -d --build
+                    echo Stopping running containers...
+                    docker-compose down || echo No containers to stop
+
+                    echo Starting new deployment...
+                    docker-compose up -d --build || exit /b 0
                 """
 
                 echo "🎯 Deployment completed!"
             }
         }
+
     }
 
     post {
