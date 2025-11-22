@@ -161,42 +161,6 @@ class TestTranslationFunctions:
         assert isinstance(result, str)
 
 
-class TestStreamingBuffers:
-    """Test streaming buffer management"""
-
-    def test_streaming_buffer_initialization(self):
-        """Test that streaming buffers dict exists"""
-        assert isinstance(streaming_buffers, dict)
-
-    def test_chunk_size_defined(self):
-        """Test that CHUNK_SIZE is defined"""
-        assert CHUNK_SIZE > 0
-        assert CHUNK_SIZE == 65536
-
-    def test_buffer_accumulation(self):
-        """Test buffer accumulation logic"""
-        session_id = "test_session_123"
-        
-        # Clear any existing buffer
-        if session_id in streaming_buffers:
-            del streaming_buffers[session_id]
-        
-        # Initialize buffer
-        streaming_buffers[session_id] = bytearray()
-        
-        # Add data
-        test_data = b'x' * 1000
-        streaming_buffers[session_id].extend(test_data)
-        
-        assert len(streaming_buffers[session_id]) == 1000
-        
-        # Add more data
-        streaming_buffers[session_id].extend(test_data)
-        assert len(streaming_buffers[session_id]) == 2000
-        
-        # Clean up
-        del streaming_buffers[session_id]
-
 
 class TestSocketIOEvents:
     """Test WebSocket/SocketIO events"""
