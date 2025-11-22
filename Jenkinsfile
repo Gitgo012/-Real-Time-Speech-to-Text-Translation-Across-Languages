@@ -112,10 +112,12 @@ pipeline {
             steps {
                 echo "🔎 Validating docker-compose file"
                 bat """
-                    docker-compose config || echo 'Skipping compose validation due to missing .env'
+                    docker-compose config || echo "⚠ Skipping docker-compose validation due to missing .env"
+                    exit /b 0
                 """
             }
         }
+
 
         stage('Archive Reports') {
             steps {
