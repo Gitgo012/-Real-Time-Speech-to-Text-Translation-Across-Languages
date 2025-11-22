@@ -101,8 +101,59 @@ real-time-speech-translation/
 │   └── ingress.yaml
 ├── docker/               # Dockerfiles for each service
 ├── tests/                # Unit and integration tests
+├── Jenkinsfile           # Jenkins CI/CD pipeline
+├── JENKINS_SETUP.md      # Jenkins configuration guide
+├── TESTING_README.md     # Testing setup and guide
 └── README.md
 ```
+
+---
+
+## Testing & CI/CD
+
+### Unit Testing
+
+We use **pytest** for backend testing and **Vitest** for frontend testing.
+
+#### Backend Tests
+```bash
+pytest tests/ -v --cov=. --cov-report=html
+```
+
+#### Frontend Tests
+```bash
+cd frontend
+npm run test
+npm run test:coverage
+```
+
+### Jenkins Pipeline
+
+A complete CI/CD pipeline is configured in `Jenkinsfile` with the following stages:
+- **Checkout** - Clone repository
+- **Dependency Installation** - Python and npm packages
+- **Code Quality** - Linting and formatting checks
+- **Unit Tests** - Backend (pytest) and Frontend (vitest)
+- **Security Scanning** - CVE checks
+- **Docker Build** - Container image creation
+- **Validation** - docker-compose configuration
+
+#### Quick Setup (Windows)
+```powershell
+.\setup-jenkins.bat
+```
+
+#### Quick Setup (Linux/Mac)
+```bash
+chmod +x setup-jenkins.sh
+./setup-jenkins.sh
+```
+
+#### Manual Jenkins Setup
+1. Navigate to `http://localhost:8090`
+2. Create new Pipeline job
+3. Configure to use this repository's `Jenkinsfile`
+4. See `JENKINS_SETUP.md` for detailed instructions
 
 ---
 
@@ -125,4 +176,5 @@ This project is open-source and available under the **MIT License**.
 - [Hugging Face Transformers](https://huggingface.co/models)  
 - [Coqui TTS](https://github.com/coqui-ai/TTS)  
 - Open-source community for enabling real-time AI research & deployment
+
 

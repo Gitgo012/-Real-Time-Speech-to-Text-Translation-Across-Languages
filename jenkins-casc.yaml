@@ -1,0 +1,102 @@
+# Jenkins Configuration as Code (JCasC) for RealtimeASR Project
+# This file configures Jenkins automatically
+# Place in /var/jenkins_home/jenkins.yaml or set CASC_JENKINS_CONFIG environment variable
+
+jenkins:
+  systemMessage: "Real-Time Speech-to-Text Translation CI/CD Pipeline"
+  
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          password: "${JENKINS_PASSWORD}"
+
+  crumbIssuer:
+    standard:
+      excludeClientIPFromCrumb: false
+
+  remotingSecurity:
+    enabled: true
+
+  views:
+    - all:
+        name: "All"
+    - list:
+        name: "Pipeline Jobs"
+        includeRegex: ".*Pipeline.*"
+
+  viewsTabBar: "standard"
+
+unclassified:
+  location:
+    url: "http://localhost:8090/"
+
+  gitHub:
+    apiRateLimitChecker: ThrottleOnOver
+    
+  ghprbTrigger:
+    autoCloseFailedPullRequests: false
+    useGitHubAppCredentials: false
+
+# Job Configuration
+jobs:
+  - script: >
+      pipelineJob('RealtimeASR-Pipeline') {
+        description('Real-Time Speech-to-Text Translation CI/CD Pipeline')
+        
+        triggers {
+          pollSCM {
+            scmpoll_period('H/5 * * * *')
+          }
+        }
+        
+        definition {
+          cps {
+            script(readFileFromWorkspace('Jenkinsfile'))
+            sandbox(true)
+          }
+        }
+        
+        properties {
+          buildDiscarder {
+            strategy {
+              logRotator {
+                daysToKeepStr('30')
+                numToKeepStr('50')
+                artifactDaysToKeepStr('-1')
+                artifactNumToKeepStr('-1')
+              }
+            }
+          }
+          
+          pipelineTriggers {
+            triggers {
+              githubPush()
+            }
+          }
+        }
+      }
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - usernamePassword:
+              id: "github-credentials"
+              username: "${GITHUB_USERNAME}"
+              password: "${GITHUB_PASSWORD}"
+              description: "GitHub Credentials"
+              scope: GLOBAL
+
+tool:
+  git:
+    installations:
+      - name: "Default"
+        home: "git"
+  maven:
+    installations:
+      - name: "Default"
+        properties:
+          - installSource:
+              direct: true
