@@ -666,7 +666,13 @@ def handle_audio_chunk(data):
         translated_text = ""
         if target_lang and transcribed_text and not transcribed_text.startswith("Transcription error"):
             translated_text = translate_text(transcribed_text, detected_lang, target_lang)
-        emit('transcription_result', {'original': transcribed_text,'translated': translated_text,'language': target_lang,'success': True})
+        emit('transcription_result', {
+            'original': transcribed_text,
+            'translated': translated_text,
+            'sourceLang': detected_lang,
+            'targetLang': target_lang,
+            'success': True
+        })
     except Exception as e:
         logger.error(f"Error processing audio chunk: {e}")
         emit('error', {'message': f'Processing error: {str(e)}'})

@@ -126,8 +126,8 @@ function Dashboard({ user, onLogout }) {
           if (data.original && data.translated) {
             const historyItem = {
               timestamp: new Date().toISOString(),
-              sourceLang: sourceLang,
-              targetLang: targetLang,
+              sourceLang: data.sourceLang,
+              targetLang: data.targetLang,
               original: data.original,
               translated: data.translated,
             };
