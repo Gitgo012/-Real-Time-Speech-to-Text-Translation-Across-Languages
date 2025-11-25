@@ -461,10 +461,12 @@ def logout():
 
 @app.route('/dashboard')
 def dashboard():
+    # This route is deprecated. React frontend handles routing.
+    # For API verification, use /api/session_check endpoint instead.
     if "user" not in session:
-        flash("Please login")
         return redirect(url_for('login'))
-    return render_template("dashboard.html", username=session.get("user"))
+    # Redirect to frontend (if served from same origin) or just verify session
+    return {'status': 'authenticated', 'user': session.get("user")}, 200
 
 @app.route('/debug/oauth')
 def debug_oauth():
