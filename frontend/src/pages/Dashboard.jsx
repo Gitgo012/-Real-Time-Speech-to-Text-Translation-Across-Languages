@@ -5,8 +5,8 @@ import axios from "axios";
 import "./Dashboard.css";
 
 function Dashboard({ user, onLogout }) {
-  const [sourceLang, setSourceLang] = useState("en");
-  const [targetLang, setTargetLang] = useState("es");
+  const [sourceLang, setSourceLang] = useState("");
+  const [targetLang, setTargetLang] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [originalText, setOriginalText] = useState(
     "Your original speech will appear here..."
@@ -97,10 +97,7 @@ function Dashboard({ user, onLogout }) {
         console.log("Received available languages:", data);
         if (data && data.languages) {
           setAvailableLanguages(data.languages);
-          // Set default target language if not set (use Spanish as default)
-          setTargetLang((prev) => prev || "es");
-          // Set default source language (English)
-          setSourceLang((prev) => prev || "en");
+          // Do not force defaults; let the user pick source/target explicitly.
         }
         if (!data.asr_ready) {
           setStatus("ASR model not ready. Please wait...");
@@ -118,6 +115,9 @@ function Dashboard({ user, onLogout }) {
           setTranslatedText(
             data.translated || "Your translated speech will appear here..."
           );
+          // Update source/target language selection based on server info
+          if (data.sourceLang) setSourceLang(data.sourceLang);
+          if (data.targetLang) setTargetLang(data.targetLang);
           setLoading(false);
           setIsProcessing(false);
           setStatus("Processing complete");
@@ -126,8 +126,8 @@ function Dashboard({ user, onLogout }) {
           if (data.original && data.translated) {
             const historyItem = {
               timestamp: new Date().toISOString(),
-              sourceLang: data.sourceLang,
-              targetLang: data.targetLang,
+              sourceLang: data.sourceLang || sourceLang,
+              targetLang: data.targetLang || targetLang,
               original: data.original,
               translated: data.translated,
             };
@@ -238,6 +238,7 @@ function Dashboard({ user, onLogout }) {
             socketRef.current.emit("audio_chunk", {
               audio: reader.result,
               target_lang: targetLang,
+              source_lang: sourceLang,
             });
           }
         };

@@ -658,18 +658,21 @@ def handle_audio_chunk(data):
             return
         audio_data = base64.b64decode(data['audio'].split(',')[1])
         target_lang = data.get('target_lang', '')
+        client_source_lang = data.get('source_lang', '')
         if len(audio_data) < 100:
             emit('transcription_result', {'original': 'Audio too short','translated': '', 'language': target_lang,'success': False})
             return
         samples, sample_rate = process_webm_audio(audio_data)
         transcribed_text, detected_lang = transcribe_audio(samples, sample_rate)
         translated_text = ""
+        # Prefer client-provided source language when present, otherwise use detected language
+        source_for_translation = client_source_lang if client_source_lang else detected_lang
         if target_lang and transcribed_text and not transcribed_text.startswith("Transcription error"):
-            translated_text = translate_text(transcribed_text, detected_lang, target_lang)
+            translated_text = translate_text(transcribed_text, source_for_translation, target_lang)
         emit('transcription_result', {
             'original': transcribed_text,
             'translated': translated_text,
-            'sourceLang': detected_lang,
+            'sourceLang': source_for_translation,
             'targetLang': target_lang,
             'success': True
         })
