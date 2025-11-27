@@ -1,7 +1,7 @@
 import os
 import torch
 import numpy as np
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask import Flask, render_template, request, redirect, url_for, session, flash, make_response
 from flask_socketio import SocketIO, emit, disconnect
 import io
 import base64
@@ -18,6 +18,7 @@ from flask_pymongo import PyMongo
 from flask_bcrypt import Bcrypt
 from flask_session import Session
 from authlib.integrations.flask_client import OAuth
+from flask import make_response
 
 # Picked 20 diverse languages
 AVAILABLE_LANGUAGES = {
@@ -72,6 +73,9 @@ app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SECURE"] = False  # Set to True in production with HTTPS
 app.config["SESSION_COOKIE_DOMAIN"] = None  # Allow cookies to work across subdomains if needed
 app.config["SESSION_COOKIE_PATH"] = "/"  # Make sure cookie is available for all paths
+
+# Frontend URL used for redirects when templates are not served by backend
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:8080').rstrip('/')
 
 mongo = PyMongo(app)
 bcrypt = Bcrypt(app)
@@ -417,6 +421,24 @@ def save_translation():
         logger.error(f"Error saving translation: {e}", exc_info=True)
         return {'error': str(e)}, 500
 
+
+@app.route('/api/translation_history', methods=['DELETE'])
+def delete_translation_history():
+    """Delete all translation history for the logged-in user."""
+    user_id = session.get("user")
+    if not user_id:
+        logger.warning("Delete translation history: user not in session")
+        return {'error': 'Not logged in'}, 401
+
+    try:
+        logger.info(f"Deleting translation history for user_id: {user_id}")
+        result = mongo.db.translation_history.delete_many({'user_id': str(user_id)})
+        logger.info(f"Deleted {result.deleted_count} translation history items for user {user_id}")
+        return {'success': True, 'deleted_count': result.deleted_count}, 200
+    except Exception as e:
+        logger.error(f"Error deleting translation history for {user_id}: {e}", exc_info=True)
+        return {'error': str(e)}, 500
+
 @app.route('/')
 def index():
     if "user" in session:
@@ -427,31 +449,46 @@ def index():
 @app.route('/register', methods=['GET','POST'])
 def register():
     if request.method == 'POST':
-        username = request.form.get("username").strip()
+        username = (request.form.get("username") or "").strip()
         password = request.form.get("password")
+        logger.info(f"Register attempt for username='{username}'")
         if not username or not password:
             flash("Please fill all fields")
             return redirect(url_for('register'))
-        if mongo.db.users.find_one({"username": username}):
-            flash("Username already exists")
-            return redirect(url_for('register'))
-        hashed = bcrypt.generate_password_hash(password).decode("utf-8")
-        mongo.db.users.insert_one({"username": username, "password": hashed, "auth_type": "basic"})
-        flash("Registered. Please login.")
-        return redirect(url_for('login'))
+        try:
+            existing = mongo.db.users.find_one({"username": username})
+            if existing:
+                logger.info(f"Register failed: username '{username}' already exists")
+                flash("Username already exists")
+                return redirect(url_for('register'))
+            hashed = bcrypt.generate_password_hash(password).decode("utf-8")
+            res = mongo.db.users.insert_one({"username": username, "password": hashed, "auth_type": "basic"})
+            logger.info(f"User registered: username='{username}', inserted_id={res.inserted_id}")
+            flash("Registered. Please login.")
+            return redirect(url_for('login'))
+        except Exception as e:
+            logger.error(f"Error during registration for '{username}': {e}", exc_info=True)
+            return {'error': 'Registration failed due to server error'}, 500
     # Template removed; frontend handles registration UI.
     return {'message': 'Register via the frontend.'}, 200
 
 @app.route('/login', methods=['GET','POST'])
 def login():
     if request.method == 'POST':
-        username = request.form.get("username").strip()
+        username = (request.form.get("username") or "").strip()
         password = request.form.get("password")
-        user = mongo.db.users.find_one({"username": username})
-        if user and user.get("auth_type")=="basic" and bcrypt.check_password_hash(user.get("password",""), password):
-            session["user"] = username
-            flash("Login successful")
-            return redirect(url_for('dashboard'))
+        logger.info(f"Login attempt for username='{username}'")
+        try:
+            user = mongo.db.users.find_one({"username": username})
+            if user and user.get("auth_type") == "basic" and bcrypt.check_password_hash(user.get("password", ""), password):
+                session["user"] = username
+                flash("Login successful")
+                return redirect(url_for('dashboard'))
+        except Exception as e:
+            logger.error(f"Error during login lookup for '{username}': {e}", exc_info=True)
+            return {'error': 'Login failed due to server error'}, 500
+
+        logger.info(f"Login failed for username='{username}'")
         flash("Invalid credentials")
         return redirect(url_for('login'))
     # Template removed; frontend handles login UI.
@@ -459,10 +496,29 @@ def login():
 
 @app.route('/logout')
 def logout():
-    # Clear the full session so user is logged out immediately
-    session.clear()
-    flash("Logged out")
-    return {'success': True, 'message': 'Logged out'}, 200
+    # Clear server-side session and delete the session cookie on the client.
+    try:
+        logger.info(f"Logging out user: {session.get('user')}")
+        session.modified = True
+        session.clear()
+
+        # Redirect back to the frontend login page and ensure response is
+        # not cached so clients do not return a 304 cached response.
+        resp = make_response(redirect(f"{FRONTEND_URL}/login"))
+
+        cookie_name = getattr(app, 'session_cookie_name', app.config.get('SESSION_COOKIE_NAME', 'session'))
+        resp.delete_cookie(cookie_name, path=app.config.get('SESSION_COOKIE_PATH', '/'))
+
+        # Prevent caching of logout responses which can result in 304 responses
+        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, private, max-age=0'
+        resp.headers['Pragma'] = 'no-cache'
+        resp.headers['Expires'] = '0'
+
+        flash("Logged out")
+        return resp
+    except Exception as e:
+        logger.error(f"Error during logout: {e}", exc_info=True)
+        return {'error': 'Logout failed'}, 500
 
 @app.route('/dashboard')
 def dashboard():

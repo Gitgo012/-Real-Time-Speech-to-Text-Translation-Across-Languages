@@ -274,6 +274,16 @@ function Dashboard({ user, onLogout }) {
 
   const handleLogout = async () => {
     try {
+      // Disconnect the socket before logging out to avoid websocket frames
+      // being sent/received while the session is cleared on the server.
+      if (socketRef.current) {
+        try {
+          socketRef.current.disconnect();
+        } catch (e) {
+          console.warn("Error disconnecting socket before logout:", e);
+        }
+      }
+
       await axios.get("/logout", { withCredentials: true, maxRedirects: 0 });
       onLogout();
       navigate("/login");
@@ -285,7 +295,22 @@ function Dashboard({ user, onLogout }) {
   };
 
   const clearHistory = () => {
-    setTranslationHistory([]);
+    // Call backend to delete stored translation history for this user
+    (async () => {
+      try {
+        const res = await axios.delete('/api/translation_history', { withCredentials: true });
+        if (res.data && res.data.success) {
+          setTranslationHistory([]);
+          console.log('Translation history cleared on server', res.data);
+        } else {
+          console.error('Failed to clear translation history', res.data);
+          alert('Failed to clear history on server. Check logs.');
+        }
+      } catch (err) {
+        console.error('Error clearing history:', err);
+        alert('Error clearing history. See console for details.');
+      }
+    })();
   };
 
   const formatDate = (dateString) => {
