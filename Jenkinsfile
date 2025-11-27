@@ -74,7 +74,7 @@ pipeline {
             steps {
                 bat """
                     call venv\\Scripts\\activate
-                    pytest tests/ -v --cov=. --cov-report=html --cov-report=xml || echo Tests failed
+                    pytest tests/ -q --maxfail=1 --cov=. --cov-report=xml || echo Tests failed
                 """
             }
         }
@@ -83,8 +83,8 @@ pipeline {
             steps {
                 bat """
                     cd frontend
-                    npm install --prefer-offline --no-audit --no-fund
-                    npm test || echo No frontend tests defined
+                    npm ci --prefer-offline --no-audit --no-fund --silent
+                    npm test --if-present || echo No frontend tests defined
                 """
             }
         }

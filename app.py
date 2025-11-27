@@ -421,7 +421,8 @@ def save_translation():
 def index():
     if "user" in session:
         return redirect(url_for('dashboard'))
-    return render_template('index.html')
+    # Template removed; frontend React app serves UI. Return JSON for API-only server.
+    return {'message': 'This server provides the API. Please open the frontend app.'}, 200
 
 @app.route('/register', methods=['GET','POST'])
 def register():
@@ -438,7 +439,8 @@ def register():
         mongo.db.users.insert_one({"username": username, "password": hashed, "auth_type": "basic"})
         flash("Registered. Please login.")
         return redirect(url_for('login'))
-    return render_template('register.html')
+    # Template removed; frontend handles registration UI.
+    return {'message': 'Register via the frontend.'}, 200
 
 @app.route('/login', methods=['GET','POST'])
 def login():
@@ -452,13 +454,15 @@ def login():
             return redirect(url_for('dashboard'))
         flash("Invalid credentials")
         return redirect(url_for('login'))
-    return render_template('login.html')
+    # Template removed; frontend handles login UI.
+    return {'message': 'Login via the frontend.'}, 200
 
 @app.route('/logout')
 def logout():
-    session.pop("user", None)
+    # Clear the full session so user is logged out immediately
+    session.clear()
     flash("Logged out")
-    return redirect(url_for('index'))
+    return {'success': True, 'message': 'Logged out'}, 200
 
 @app.route('/dashboard')
 def dashboard():
