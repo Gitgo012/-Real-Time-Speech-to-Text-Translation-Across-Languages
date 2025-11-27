@@ -1,7 +1,7 @@
 import os
 import torch
 import numpy as np
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask import Flask, render_template, request, redirect, url_for, session, flash, make_response
 from flask_socketio import SocketIO, emit, disconnect
 import io
 import base64
@@ -18,6 +18,7 @@ from flask_pymongo import PyMongo
 from flask_bcrypt import Bcrypt
 from flask_session import Session
 from authlib.integrations.flask_client import OAuth
+from flask import make_response
 
 # Picked 20 diverse languages
 AVAILABLE_LANGUAGES = {
@@ -66,11 +67,15 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'fallback-dev-key-12345')
 app.config["MONGO_URI"] = os.getenv("MONGO_URI", "mongodb://localhost:27017/realtimeASR")
 app.config["SESSION_TYPE"] = "filesystem"
+app.config['SESSION_FILE_DIR'] = '/app/flask_session'
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SECURE"] = False  # Set to True in production with HTTPS
 app.config["SESSION_COOKIE_DOMAIN"] = None  # Allow cookies to work across subdomains if needed
 app.config["SESSION_COOKIE_PATH"] = "/"  # Make sure cookie is available for all paths
+
+# Frontend URL used for redirects when templates are not served by backend
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:8080').rstrip('/')
 
 mongo = PyMongo(app)
 bcrypt = Bcrypt(app)
@@ -416,55 +421,113 @@ def save_translation():
         logger.error(f"Error saving translation: {e}", exc_info=True)
         return {'error': str(e)}, 500
 
+
+@app.route('/api/translation_history', methods=['DELETE'])
+def delete_translation_history():
+    """Delete all translation history for the logged-in user."""
+    user_id = session.get("user")
+    if not user_id:
+        logger.warning("Delete translation history: user not in session")
+        return {'error': 'Not logged in'}, 401
+
+    try:
+        logger.info(f"Deleting translation history for user_id: {user_id}")
+        result = mongo.db.translation_history.delete_many({'user_id': str(user_id)})
+        logger.info(f"Deleted {result.deleted_count} translation history items for user {user_id}")
+        return {'success': True, 'deleted_count': result.deleted_count}, 200
+    except Exception as e:
+        logger.error(f"Error deleting translation history for {user_id}: {e}", exc_info=True)
+        return {'error': str(e)}, 500
+
 @app.route('/')
 def index():
     if "user" in session:
         return redirect(url_for('dashboard'))
-    return render_template('index.html')
+    # Template removed; frontend React app serves UI. Return JSON for API-only server.
+    return {'message': 'This server provides the API. Please open the frontend app.'}, 200
 
 @app.route('/register', methods=['GET','POST'])
 def register():
     if request.method == 'POST':
-        username = request.form.get("username").strip()
+        username = (request.form.get("username") or "").strip()
         password = request.form.get("password")
+        logger.info(f"Register attempt for username='{username}'")
         if not username or not password:
             flash("Please fill all fields")
             return redirect(url_for('register'))
-        if mongo.db.users.find_one({"username": username}):
-            flash("Username already exists")
-            return redirect(url_for('register'))
-        hashed = bcrypt.generate_password_hash(password).decode("utf-8")
-        mongo.db.users.insert_one({"username": username, "password": hashed, "auth_type": "basic"})
-        flash("Registered. Please login.")
-        return redirect(url_for('login'))
-    return render_template('register.html')
+        try:
+            existing = mongo.db.users.find_one({"username": username})
+            if existing:
+                logger.info(f"Register failed: username '{username}' already exists")
+                flash("Username already exists")
+                return redirect(url_for('register'))
+            hashed = bcrypt.generate_password_hash(password).decode("utf-8")
+            res = mongo.db.users.insert_one({"username": username, "password": hashed, "auth_type": "basic"})
+            logger.info(f"User registered: username='{username}', inserted_id={res.inserted_id}")
+            flash("Registered. Please login.")
+            return redirect(url_for('login'))
+        except Exception as e:
+            logger.error(f"Error during registration for '{username}': {e}", exc_info=True)
+            return {'error': 'Registration failed due to server error'}, 500
+    # Template removed; frontend handles registration UI.
+    return {'message': 'Register via the frontend.'}, 200
 
 @app.route('/login', methods=['GET','POST'])
 def login():
     if request.method == 'POST':
-        username = request.form.get("username").strip()
+        username = (request.form.get("username") or "").strip()
         password = request.form.get("password")
-        user = mongo.db.users.find_one({"username": username})
-        if user and user.get("auth_type")=="basic" and bcrypt.check_password_hash(user.get("password",""), password):
-            session["user"] = username
-            flash("Login successful")
-            return redirect(url_for('dashboard'))
+        logger.info(f"Login attempt for username='{username}'")
+        try:
+            user = mongo.db.users.find_one({"username": username})
+            if user and user.get("auth_type") == "basic" and bcrypt.check_password_hash(user.get("password", ""), password):
+                session["user"] = username
+                flash("Login successful")
+                return redirect(url_for('dashboard'))
+        except Exception as e:
+            logger.error(f"Error during login lookup for '{username}': {e}", exc_info=True)
+            return {'error': 'Login failed due to server error'}, 500
+
+        logger.info(f"Login failed for username='{username}'")
         flash("Invalid credentials")
         return redirect(url_for('login'))
-    return render_template('login.html')
+    # Template removed; frontend handles login UI.
+    return {'message': 'Login via the frontend.'}, 200
 
 @app.route('/logout')
 def logout():
-    session.pop("user", None)
-    flash("Logged out")
-    return redirect(url_for('index'))
+    # Clear server-side session and delete the session cookie on the client.
+    try:
+        logger.info(f"Logging out user: {session.get('user')}")
+        session.modified = True
+        session.clear()
+
+        # Redirect back to the frontend login page and ensure response is
+        # not cached so clients do not return a 304 cached response.
+        resp = make_response(redirect(f"{FRONTEND_URL}/login"))
+
+        cookie_name = getattr(app, 'session_cookie_name', app.config.get('SESSION_COOKIE_NAME', 'session'))
+        resp.delete_cookie(cookie_name, path=app.config.get('SESSION_COOKIE_PATH', '/'))
+
+        # Prevent caching of logout responses which can result in 304 responses
+        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, private, max-age=0'
+        resp.headers['Pragma'] = 'no-cache'
+        resp.headers['Expires'] = '0'
+
+        flash("Logged out")
+        return resp
+    except Exception as e:
+        logger.error(f"Error during logout: {e}", exc_info=True)
+        return {'error': 'Logout failed'}, 500
 
 @app.route('/dashboard')
 def dashboard():
+    # This route is deprecated. React frontend handles routing.
+    # For API verification, use /api/session_check endpoint instead.
     if "user" not in session:
-        flash("Please login")
         return redirect(url_for('login'))
-    return render_template("dashboard.html", username=session.get("user"))
+    # Redirect to frontend (if served from same origin) or just verify session
+    return {'status': 'authenticated', 'user': session.get("user")}, 200
 
 @app.route('/debug/oauth')
 def debug_oauth():
@@ -658,15 +721,24 @@ def handle_audio_chunk(data):
             return
         audio_data = base64.b64decode(data['audio'].split(',')[1])
         target_lang = data.get('target_lang', '')
+        client_source_lang = data.get('source_lang', '')
         if len(audio_data) < 100:
             emit('transcription_result', {'original': 'Audio too short','translated': '', 'language': target_lang,'success': False})
             return
         samples, sample_rate = process_webm_audio(audio_data)
         transcribed_text, detected_lang = transcribe_audio(samples, sample_rate)
         translated_text = ""
+        # Prefer client-provided source language when present, otherwise use detected language
+        source_for_translation = client_source_lang if client_source_lang else detected_lang
         if target_lang and transcribed_text and not transcribed_text.startswith("Transcription error"):
-            translated_text = translate_text(transcribed_text, detected_lang, target_lang)
-        emit('transcription_result', {'original': transcribed_text,'translated': translated_text,'language': target_lang,'success': True})
+            translated_text = translate_text(transcribed_text, source_for_translation, target_lang)
+        emit('transcription_result', {
+            'original': transcribed_text,
+            'translated': translated_text,
+            'sourceLang': source_for_translation,
+            'targetLang': target_lang,
+            'success': True
+        })
     except Exception as e:
         logger.error(f"Error processing audio chunk: {e}")
         emit('error', {'message': f'Processing error: {str(e)}'})
